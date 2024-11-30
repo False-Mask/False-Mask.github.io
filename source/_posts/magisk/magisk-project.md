@@ -2,8 +2,7 @@
 title: Magisk基础
 tags:
   - magisk
-cover:
-  - 'https://typora-blog-picture.oss-cn-chengdu.aliyuncs.com/blog/Magisk_Logo.png'
+cover: https://typora-blog-picture.oss-cn-chengdu.aliyuncs.com/blog/Magisk_Logo.png
 date: 2024-06-02 19:41:15
 ---
 
