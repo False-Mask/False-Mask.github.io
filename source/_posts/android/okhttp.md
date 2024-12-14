@@ -3335,8 +3335,6 @@ private fun establishProtocol(
 
 > http2连接创建
 
-[http2连接](http://blog.tuzhiqiang.top/2023/03/04/%E8%AE%A1%E7%AE%97%E6%9C%BA%E5%9F%BA%E7%A1%80/%E8%AE%A1%E7%AE%97%E6%9C%BA%E7%BD%91%E7%BB%9C/http2/)
-
 [http2连接](https://halfrost.com/http2_begin/)
 
 ```kotlin
