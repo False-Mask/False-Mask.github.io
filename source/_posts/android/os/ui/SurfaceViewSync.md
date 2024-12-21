@@ -1,5 +1,5 @@
 ---
-title: SurfaceViewSync.md
+title: SurfaceViewSync机制
 tags:
   - android
 cover: >-
