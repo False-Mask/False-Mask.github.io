@@ -50,7 +50,11 @@ date: 2024-12-14 16:45:30
 
 
 
-## 确认官方镜像的版本
+## 12.14日——失败
+
+
+
+### 确认官方镜像的版本
 
 通过Settings -> About Phone -> Build Number 可知AOSP 的版本
 
@@ -66,7 +70,7 @@ date: 2024-12-14 16:45:30
 
 
 
-## 提取APK
+### 提取APK
 
 
 
@@ -115,13 +119,15 @@ c.提取
 
 > 最后通过mnt后发现三件套主要在
 >
-> system_ext、product 分区。
+> system_ext，product 分区。
+>
+> GoogleServicesFramework Phonesky PrebuiltGmsCore
 >
 > 提取流程跟上面是一样的
 
 
 
-## 安装
+### 安装
 
 
 
@@ -139,7 +145,7 @@ adb push GoogleServicesFramework Phonesky PrebuiltGmsCore /system/priv-app/
 
 
 
-## bootloop
+### bootloop
 
 
 
@@ -155,7 +161,7 @@ fastboot flashing system system.img
 
 
 
-## 最后
+### 最后
 
 
 
@@ -169,9 +175,278 @@ fastboot flashing system system.img
 
 
 
+## 12.15日——成功
 
 
-最后
+
+### pre
+
+
+
+1. 首先总结之前失败的原因。主要是一点[priv-app特殊权限](https://source.android.com/docs/core/permissions/perms-allowlist?hl=zh-cn)
+
+核心其实就一句话：在android 8.1以下特殊权限声明在system分区priv-app下，而在android 9以后特殊权限在system，product, vendor分区的priv-app下
+
+特权应用是位于系统映像某个分区上 `priv-app` 目录下的系统应用。在各 Android 版本中，相应分区为：
+
+- Android 9 及更高版本：`/system, /product, /vendor`
+- Android 8.1 及更低版本：`/system`
+
+2. 那接下来我们需要怎么做解决这个问题
+
+其实很简单，我们bootloop是因为我们的gms三件套没有权限，我们把出厂镜像的权限加进去就好了。
+
+
+
+### 提取permission权限文件
+
+
+
+1.挂载system_ext，product img
+
+
+
+2.进入etc/permissions
+
+```shell
+➜  product ls etc/permissions 
+android.hardware.telephony.euicc.xml   com.android.sdm.plugins.connmo.xml   com.android.sdm.plugins.sprintdm.xml         com.google.android.apps.dreamliner.xml  com.google.android.odad.xml       com.verizon.apn.xml       lpa.xml                             RemoteSimlockManager.xml      UimGbaManager.xml    uimremoteserver.xml
+com.android.imsserviceentitlement.xml  com.android.sdm.plugins.dcmo.xml     com.android.sdm.plugins.usccdm.xml           com.google.android.dialer.support.xml   com.google.omadm.trigger.xml      com.verizon.services.xml  privapp-permissions-google-p.xml    RemoteSimlock.xml             UimGba.xml           UimService.xml
+com.android.omadm.service.xml          com.android.sdm.plugins.diagmon.xml  com.google.android.apps.diagnosticstool.xml  com.google.android.hardwareinfo.xml     com.google.SSRestartDetector.xml  features-verizon.xml      qti_telephony_hidl_wrapper_prd.xml  split-permissions-google.xml  uimremoteclient.xml  vendor.qti.hardware.data.connection-V1.0-java.xml
+```
+
+
+
+3.提取privapp-permissions-x.xml文件
+
+
+
+### 修改& 上传
+
+
+
+1.稍加改造
+
+上述提到的permission文件是所有的app权限，我们肯定是用不到全部的。我们只需要使用几个就行了。（主要是gms三件套）
+
+```java
+// privapp-permissions-google-p.xml 
+
+<permissions>
+
+    <privapp-permissions package="com.android.vending">
+        <permission name="android.permission.ALLOCATE_AGGRESSIVE"/>
+        <permission name="android.permission.BACKUP"/>
+        <permission name="android.permission.BATTERY_STATS"/>
+        <permission name="android.permission.CHANGE_COMPONENT_ENABLED_STATE"/>
+        <permission name="android.permission.CHANGE_DEVICE_IDLE_TEMP_WHITELIST"/>
+        <permission name="android.permission.CHANGE_OVERLAY_PACKAGES"/>
+        <permission name="android.permission.CLEAR_APP_CACHE"/>
+        <permission name="android.permission.CONNECTIVITY_INTERNAL"/>
+        <permission name="android.permission.DELETE_PACKAGES"/>
+        <permission name="android.permission.DUMP"/>
+        <permission name="android.permission.FORCE_STOP_PACKAGES"/>
+        <permission name="android.permission.GET_ACCOUNTS_PRIVILEGED"/>
+        <permission name="android.permission.GET_APP_OPS_STATS"/>
+        <permission name="android.permission.INSTALL_PACKAGES"/>
+        <permission name="android.permission.INTERACT_ACROSS_USERS"/>
+        <permission name="android.permission.LOADER_USAGE_STATS"/>
+        <permission name="android.permission.MANAGE_CLOUDSEARCH"/>
+        <permission name="android.permission.MANAGE_ROLLBACKS"/>
+        <permission name="android.permission.MANAGE_USERS"/>
+        <permission name="android.permission.PACKAGE_USAGE_STATS"/>
+        <permission name="android.permission.PACKAGE_VERIFICATION_AGENT"/>
+        <permission name="android.permission.READ_PRIVILEGED_PHONE_STATE"/>
+        <permission name="android.permission.READ_RUNTIME_PROFILES"/>
+        <permission name="android.permission.REAL_GET_TASKS"/>
+        <permission name="android.permission.REBOOT"/>
+        <permission name="android.permission.SEND_DEVICE_CUSTOMIZATION_READY"/>
+        <permission name="android.permission.SEND_SAFETY_CENTER_UPDATE"/>
+        <permission name="android.permission.SEND_SMS_NO_CONFIRMATION"/>
+        <permission name="android.permission.SET_PREFERRED_APPLICATIONS"/>
+        <permission name="android.permission.START_ACTIVITIES_FROM_BACKGROUND"/>
+        <permission name="android.permission.STATUS_BAR"/>
+        <permission name="android.permission.SUBSTITUTE_NOTIFICATION_APP_NAME"/>
+        <permission name="android.permission.UPDATE_DEVICE_STATS"/>
+        <permission name="android.permission.WRITE_SECURE_SETTINGS"/>
+        <permission name="com.android.permission.USE_INSTALLER_V2"/>
+        <permission name="android.permission.OVERRIDE_COMPAT_CHANGE_CONFIG_ON_RELEASE_BUILD"/>
+        <permission name="com.google.android.settings.setup.dock.RUN_DOCK_SETUP"/>
+    </privapp-permissions>
+
+
+    <privapp-permissions package="com.google.android.gms">
+        <permission name="android.permission.ACCESS_BROADCAST_RESPONSE_STATS"/>
+        <permission name="android.permission.ACCESS_CACHE_FILESYSTEM"/>
+        <permission name="android.permission.ACCESS_CONTEXT_HUB"/>
+        <permission name="android.permission.ACCESS_FPS_COUNTER"/>
+        <permission name="android.permission.ACCESS_NETWORK_CONDITIONS"/>
+        <permission name="android.permission.ACCESS_VIBRATOR_STATE"/>
+        <permission name="android.permission.ACTIVITY_EMBEDDING"/>
+        <permission name="android.permission.ALLOCATE_AGGRESSIVE"/>
+        <permission name="android.permission.BACKUP"/>
+        <permission name="android.permission.BLUETOOTH_PRIVILEGED"/>
+        <permission name="android.permission.BROADCAST_CLOSE_SYSTEM_DIALOGS"/>
+        <permission name="android.permission.CALL_PRIVILEGED"/>
+        <permission name="android.permission.CAPTURE_AUDIO_HOTWORD"/>
+        <permission name="android.permission.CAPTURE_AUDIO_OUTPUT"/>
+        <permission name="android.permission.CAPTURE_SECURE_VIDEO_OUTPUT"/>
+        <permission name="android.permission.CAPTURE_VIDEO_OUTPUT"/>
+        <permission name="android.permission.CHANGE_COMPONENT_ENABLED_STATE"/>
+        <permission name="android.permission.CHANGE_DEVICE_IDLE_TEMP_WHITELIST"/>
+        <permission name="android.permission.COMPANION_APPROVE_WIFI_CONNECTIONS"/>
+        <permission name="android.permission.CONNECTIVITY_USE_RESTRICTED_NETWORKS"/>
+        <permission name="android.permission.CONTROL_INCALL_EXPERIENCE"/>
+        <permission name="android.permission.CONTROL_DISPLAY_SATURATION"/>
+        <permission name="android.permission.CONTROL_KEYGUARD_SECURE_NOTIFICATIONS"/>
+        <permission name="android.permission.DISPATCH_PROVISIONING_MESSAGE"/>
+        <permission name="android.permission.DOMAIN_VERIFICATION_AGENT"/>
+        <permission name="android.permission.DUMP"/>
+        <permission name="android.permission.GET_APP_OPS_STATS"/>
+        <permission name="android.permission.INSTALL_LOCATION_TIME_ZONE_PROVIDER_SERVICE" />
+        <permission name="android.permission.INTENT_FILTER_VERIFICATION_AGENT"/>
+        <permission name="android.permission.INTERACT_ACROSS_USERS"/>
+        <permission name="android.permission.INVOKE_CARRIER_SETUP"/>
+        <permission name="android.permission.LOCAL_MAC_ADDRESS"/>
+        <permission name="android.permission.LOCATION_BYPASS"/>
+        <permission name="android.permission.LOCATION_HARDWARE"/>
+        <permission name="android.permission.LOCK_DEVICE"/>
+        <permission name="android.permission.MANAGE_DEVICE_ADMINS"/>
+        <permission name="android.permission.MANAGE_FACTORY_RESET_PROTECTION" />
+        <permission name="android.permission.MANAGE_GAME_ACTIVITY" />
+        <permission name="android.permission.MANAGE_GAME_MODE" />
+        <permission name="android.permission.MANAGE_ROLLBACKS"/>
+        <permission name="android.permission.MANAGE_SOUND_TRIGGER"/>
+        <permission name="android.permission.MANAGE_SUBSCRIPTION_PLANS"/>
+        <permission name="android.permission.MANAGE_TIME_AND_ZONE_DETECTION"/>
+        <permission name="android.permission.MANAGE_USB"/>
+        <permission name="android.permission.MANAGE_USERS"/>
+        <permission name="android.permission.MANAGE_VOICE_KEYPHRASES"/>
+        <permission name="android.permission.MANAGE_WIFI_AUTO_JOIN"/>
+        <permission name="android.permission.MANAGE_WIFI_NETWORK_SELECTION"/>
+	<permission name="android.permission.MANAGE_WIFI_INTERFACES"/>
+        <permission name="android.permission.MASTER_CLEAR"/>
+        <permission name="android.permission.MEDIA_CONTENT_CONTROL"/>
+        <permission name="android.permission.MODIFY_AUDIO_ROUTING"/>
+        <permission name="android.permission.MODIFY_DAY_NIGHT_MODE"/>
+        <permission name="android.permission.MODIFY_DEFAULT_AUDIO_EFFECTS"/>
+        <permission name="android.permission.MODIFY_NETWORK_ACCOUNTING"/>
+        <permission name="android.permission.MODIFY_PHONE_STATE"/>
+        <permission name="android.permission.NOTIFY_PENDING_SYSTEM_UPDATE"/>
+        <permission name="android.permission.OBSERVE_GRANT_REVOKE_PERMISSIONS"/>
+        <permission name="android.permission.OVERRIDE_WIFI_CONFIG"/>
+        <permission name="android.permission.PACKAGE_USAGE_STATS"/>
+        <permission name="android.permission.PROVIDE_RESOLVER_RANKER_SERVICE" />
+        <permission name="android.permission.PROVIDE_TRUST_AGENT"/>
+        <permission name="android.permission.READ_DREAM_STATE"/>
+        <permission name="android.permission.READ_LOGS"/>
+        <permission name="android.permission.READ_NEARBY_STREAMING_POLICY"/>
+        <permission name="android.permission.READ_NETWORK_USAGE_HISTORY"/>
+        <permission name="android.permission.READ_OEM_UNLOCK_STATE"/>
+        <permission name="android.permission.READ_PRIVILEGED_PHONE_STATE"/>
+        <permission name="android.permission.READ_WIFI_CREDENTIAL"/>
+        <permission name="android.permission.REAL_GET_TASKS"/>
+        <permission name="android.permission.REBOOT"/>
+        <permission name="android.permission.RECEIVE_DATA_ACTIVITY_CHANGE"/>
+        <permission name="android.permission.RECOVER_KEYSTORE"/>
+        <permission name="android.permission.RECOVERY"/>
+        <permission name="android.permission.REGISTER_CALL_PROVIDER"/>
+        <permission name="android.permission.REMOTE_DISPLAY_PROVIDER"/>
+        <permission name="android.permission.RENOUNCE_PERMISSIONS"/>
+        <permission name="android.permission.REQUEST_COMPANION_PROFILE_COMPUTER"/>
+        <permission name="android.permission.REQUEST_COMPANION_SELF_MANAGED"/>
+        <permission name="android.permission.RESET_PASSWORD"/>
+        <permission name="android.permission.SCHEDULE_PRIORITIZED_ALARM"/>
+        <permission name="android.permission.SCORE_NETWORKS"/>
+        <permission name="android.permission.SEND_SAFETY_CENTER_UPDATE"/>
+        <permission name="android.permission.SEND_SMS_NO_CONFIRMATION"/>
+        <permission name="android.permission.SET_TIME"/>
+        <permission name="android.permission.SET_TIME_ZONE"/>
+        <permission name="android.permission.START_ACTIVITIES_FROM_BACKGROUND"/>
+        <permission name="android.permission.START_TASKS_FROM_RECENTS"/>
+        <permission name="android.permission.STATUS_BAR"/>
+        <permission name="android.permission.SUBSTITUTE_NOTIFICATION_APP_NAME"/>
+        <permission name="android.permission.SUBSTITUTE_SHARE_TARGET_APP_NAME_AND_ICON"/>
+        <permission name="android.permission.TETHER_PRIVILEGED"/>
+        <permission name="android.permission.UPDATE_APP_OPS_STATS"/>
+        <permission name="android.permission.UPDATE_DEVICE_STATS"/>
+        <permission name="android.permission.UPDATE_FONTS" />
+        <permission name="android.permission.USE_RESERVED_DISK"/>
+        <permission name="android.permission.USER_ACTIVITY"/>
+        <permission name="android.permission.UWB_PRIVILEGED"/>
+        <permission name="android.permission.WRITE_GSERVICES"/>
+        <permission name="android.permission.WRITE_SECURE_SETTINGS"/>
+        <permission name="com.android.voicemail.permission.READ_VOICEMAIL"/>
+    </privapp-permissions>
+
+</permissions>
+    
+// privapp-permissions-google-se.xml
+    <permissions>
+
+    <privapp-permissions package="com.google.android.gsf">
+        <permission name="android.permission.ACCESS_CACHE_FILESYSTEM"/>
+        <permission name="android.permission.BACKUP"/>
+        <permission name="android.permission.CHANGE_COMPONENT_ENABLED_STATE"/>
+        <permission name="android.permission.DUMP"/>
+        <permission name="android.permission.INTERACT_ACROSS_USERS"/>
+        <permission name="android.permission.INVOKE_CARRIER_SETUP"/>
+        <permission name="android.permission.MANAGE_USERS"/>
+        <permission name="android.permission.MASTER_CLEAR"/>
+        <permission name="android.permission.READ_DREAM_STATE"/>
+        <permission name="android.permission.READ_LOGS"/>
+        <permission name="android.permission.READ_NETWORK_USAGE_HISTORY"/>
+        <permission name="android.permission.REBOOT"/>
+        <permission name="android.permission.RECEIVE_DATA_ACTIVITY_CHANGE"/>
+        <permission name="android.permission.RECOVERY"/>
+        <permission name="android.permission.SET_TIME"/>
+        <permission name="android.permission.STATUS_BAR"/>
+        <permission name="android.permission.UPDATE_DEVICE_STATS"/>
+        <permission name="android.permission.WRITE_GSERVICES"/>
+        <permission name="android.permission.WRITE_SECURE_SETTINGS"/>
+    </privapp-permissions>
+
+
+</permissions>
+```
+
+
+
+2.拉取aosp xml文件修改上传到/etc/permissions
+
+
+
+3.reboot
+
+
+
+
+
+### 其他问题
+
+
+
+安装后进入google play会有一个问题。：“[this device isn't play protect certified](https://support.google.com/android/answer/7165974?hl=en#zippy=%2Cdevice-isnt-certified)“
+
+简单来说就是我们的设备没有认证（这里的认证是厂商认证）
+
+
+
+Google Play需要厂商认证才能用，这里是厂商认证的列表[厂商认证的列表](https://support.google.com/android/answer/7165974?hl=en#zippy=%2Cdevice-isnt-certified)
+
+
+
+我们开发者自己打的AOSP有机会用到吗？答案是有的
+
+google play给开发者留了一个空子，注册设备Id后就可以使用啦～
+
+[注册地址](https://www.google.com/android/uncertified)
+
+
+
+
+
+# 最后
 
 > La fanfare frémit au carrefour de ta forme
 >
@@ -188,3 +463,5 @@ fastboot flashing system system.img
 
 
 [挂载 system 文件](https://blog.csdn.net/netwalk/article/details/140108965)
+
+[android官方文档-priv-apps](https://source.android.com/docs/core/permissions/perms-allowlist?hl=zh-cn)
