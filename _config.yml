@@ -6,15 +6,15 @@
 title: 理想三巡
 subtitle: 
 description: '要对得起苦难！'
-keywords: 涂智蔷,个人博客,Java,Android
-author: 涂智蔷
+keywords: Rose,个人博客,Java,Android
+author: Rose
 language: zh-CN
 timezone: 'Asia/Shanghai'
 email: tu_zhi_qiang@qq.com
 
 # URL
 ## Set your site url here. For example, if you use GitHub Page, set url as 'https://username.github.io/project'
-url: http://blog.tuzhiqiang.top/
+url: https://false-mask.github.io/
 permalink: :title/
 permalink_defaults:
 pretty_urls:
