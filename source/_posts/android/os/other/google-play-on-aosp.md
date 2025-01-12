@@ -2,6 +2,7 @@
 title: 记一次在AOSP上装Google Play的尝试
 tags:
  - andorid
+ - aosp
 cover: https://typora-blog-picture.oss-cn-chengdu.aliyuncs.com/blog/google-play.1024x1024.png
 date: 2024-12-14 16:45:30
 ---
