@@ -1,5 +1,5 @@
 ---
-title: android-vscode
+title: Android Vscode Remote Develop环境搭建
 cover: 'https://typora-blog-picture.oss-cn-chengdu.aliyuncs.com/blog/image-20250125172843126.png'
 date: 2025-01-25 17:50:47
 tags:
