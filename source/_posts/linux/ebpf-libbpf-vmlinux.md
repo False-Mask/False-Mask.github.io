@@ -1,14 +1,19 @@
 ---
-title: ebpf-vmlinux
+title: Android eBPF Demo 书写
 tags:
-cover:
+  - linux
+  - ebpf
+cover: >-
+  https://typora-blog-picture.oss-cn-chengdu.aliyuncs.com/blog/diagram-b6b32006ea52570dc6773f5dbf9ef8dc.svg
+date: 2025-02-03 11:43:52
 ---
 
 
+# Android libbpf Demo 书写
 
-# eBPF vmlinux 文件
+![diagram-b6b32006ea52570dc6773f5dbf9ef8dc](https://typora-blog-picture.oss-cn-chengdu.aliyuncs.com/blog/diagram-b6b32006ea52570dc6773f5dbf9ef8dc.svg)
 
-
+——From ebpf.io
 
 # 基础概念
 
@@ -31,6 +36,8 @@ vmlinux.h 部分内容输出
 大体的逻辑如下
 
 ```c
+//vmlinux.h
+
 // 如果没有 define
 #ifndef __VMLINUX_H__
 #define __VMLINUX_H__
@@ -80,36 +87,20 @@ bpftool btf dump file /sys/kernel/btf/vmlinux format c > vmlinux.h
 
 
 
-clang -g -target bpf -I. -c ebpf-demo.bpf.c -o ebpf-demo.bpf.o
+clang -target bpf -I. -c ebpf-demo.bpf.c -o ebpf-demo.bpf.o
 
 // ebpf-demo.bpf.c
 
 ```c
 #include "vmlinux.h"
-// #include <uapi/linux/ptrace.h>
-// #include <uapi/linux/limits.h>
-// #include <linux/sched.h>
-// #include <linux/bpf.h>
 #include <bpf/bpf_helpers.h>
-
-struct {
-    __uint(type, BPF_MAP_TYPE_HASH);
-    __type(key, u32);
-    __type(value, u64);
-    __uint(max_entries, 1024);
-} open_count SEC(".maps");
 
 SEC("kprobe/__arm64_sys_openat")
 int bpf_prog(struct pt_regs *ctx) {
     u32 pid = bpf_get_current_pid_tgid() >> 32;
     u64 *count, init_val = 1;
 
-    count = bpf_map_lookup_elem(&open_count, &pid);
-    if (count) {
-        __sync_fetch_and_add(count, 1);
-    } else {
-        bpf_map_update_elem(&open_count, &pid, &init_val, BPF_ANY);
-    }
+    bpf_printk("opennat calced"); 
 
     return 0;
 }
@@ -129,7 +120,7 @@ bpftool gen skeleton ebpf-demo.bpf.o > ebpf-demo.skel.h
 
 
 
-clang -Wall -I. -c ebpf-demo.c -o -g ebpf-demo.o
+clang -Wall -I. -c ebpf-demo.c -o ebpf-demo.o
 
 // ebpf-demo.c
 
@@ -167,13 +158,11 @@ int main() {
 
     bump_memlock_rlimit();
 
-    skel = ebpf_demo_bpf__open();
+    skel = ebpf_demo_bpf__open_and_load();
 
     if (!skel) {
         fprintf(stderr,"Fail to open bpf");
     }
-
-    //skel->bss->my_pid = getpid();
 
     err = ebpf_demo_bpf__attach(skel);
 
@@ -182,7 +171,7 @@ int main() {
         goto cleanup;
     }
 
-    printf("Successfully started! see output by cat /sys/kernel/debug/tracing/trace_pipe");
+    fprintf(stderr, "Successfully started! see output by cat /sys/kernel/tracing/trace_pipe\n");
 
     for(;;) {
         fprintf(stderr, ".");
@@ -209,10 +198,12 @@ int main() {
 compile.sh
 
 ```shell
-clang -g -target bpf -I. -c ebpf-demo.bpf.c -o ebpf-demo.bpf.o
+#!/bin/zsh
+rm ebpf-demo ebpf-demo.bpf.o ebpf-demo.skel.h
+clang -O2 -target bpf -I. -c ebpf-demo.bpf.c -o ebpf-demo.bpf.o
 bpftool gen skeleton ebpf-demo.bpf.o > ebpf-demo.skel.h
-clang -Wall -I. -c ebpf-demo.c -o -g ebpf-demo.o
-clang -Wall ebpf-demo.o -L/usr/lib64 -lbpf -lelf -lz -g -o ebpf-demo
+clang -Wall -I. -c ebpf-demo.c -o ebpf-demo.o
+clang -Wall ebpf-demo.o -L/usr/lib64 -lbpf -lelf -lz -o ebpf-demo
 ```
 
 
@@ -222,61 +213,75 @@ clang -Wall ebpf-demo.o -L/usr/lib64 -lbpf -lelf -lz -g -o ebpf-demo
 
 
 ```shell
-➜  code ./ebpf-demo 
+➜  code ./ebpf-demo
 libbpf: loading object 'ebpf_demo_bpf' from buffer
-libbpf: elf: section(3) kprobe/__arm64_sys_openat, size 240, link 0, flags 6, type=1
-libbpf: sec 'kprobe/__arm64_sys_openat': found program 'bpf_prog' at insn offset 0 (0 bytes), code size 30 insns (240 bytes)
-libbpf: elf: section(4) .relkprobe/__arm64_sys_openat, size 32, link 25, flags 40, type=9
-libbpf: elf: section(5) .maps, size 32, link 0, flags 3, type=1
-libbpf: elf: section(6) license, size 4, link 0, flags 3, type=1
+libbpf: elf: section(3) kprobe/__arm64_sys_openat, size 72, link 0, flags 6, type=1
+libbpf: sec 'kprobe/__arm64_sys_openat': found program 'bpf_prog' at insn offset 0 (0 bytes), code size 9 insns (72 bytes)
+libbpf: elf: section(4) license, size 4, link 0, flags 3, type=1
 libbpf: license of ebpf_demo_bpf is GPL
-libbpf: elf: section(15) .BTF, size 1497, link 0, flags 0, type=1
-libbpf: elf: section(17) .BTF.ext, size 288, link 0, flags 0, type=1
-libbpf: elf: section(25) .symtab, size 312, link 1, flags 0, type=2
-libbpf: looking for externs among 13 symbols...
+libbpf: elf: section(6) .symtab, size 96, link 1, flags 0, type=2
+libbpf: looking for externs among 4 symbols...
 libbpf: collected 0 externs total
-libbpf: map 'open_count': at sec_idx 5, offset 0.
-libbpf: map 'open_count': found type = 1.
-libbpf: map 'open_count': found key [6], sz = 4.
-libbpf: map 'open_count': found value [10], sz = 8.
-libbpf: map 'open_count': found max_entries = 1024.
-libbpf: sec '.relkprobe/__arm64_sys_openat': collecting relocation for section(3) 'kprobe/__arm64_sys_openat'
-libbpf: sec '.relkprobe/__arm64_sys_openat': relo #0: insn #6 against 'open_count'
-libbpf: prog 'bpf_prog': found map 0 (open_count, sec 5, off 0) for insn #6
-libbpf: sec '.relkprobe/__arm64_sys_openat': relo #1: insn #19 against 'open_count'
-libbpf: prog 'bpf_prog': found map 0 (open_count, sec 5, off 0) for insn #19
-libbpf: prog 'bpf_prog': can't attach BPF program without FD (was it loaded?)
-libbpf: prog 'bpf_prog': failed to attach to kprobe '__arm64_sys_openat+0x0': Invalid argument
-libbpf: prog 'bpf_prog': failed to auto-attach: -22
-Fail to load -22#
+libbpf: object 'ebpf_demo_bpf': failed (-22) to create BPF token from '/sys/fs/bpf', skipping optional step...
+Successfully started! see output by cat /sys/kernel/tracing/trace_pipe
+.......
 ```
 
 
 
-# Error
+> 你可能会疑惑，输出呢？
+>
+> 由于我们内核程序使用的bpf_printk。
+>
+> 所以输出会被重定向到/sys/kernel/debug/tracing/trace_pipe文件
+>
+> 直接` cat /sys/kernel/tracing/trace_pip `即可。
 
 
 
-- 2025.01.27日
-
-可以看见最终的运行结果是报错。
-
-具体的报错内容是: 但是不确定这个-22错误码是什么。
-
-```shell
-libbpf: prog 'bpf_prog': failed to attach to kprobe '__arm64_sys_openat+0x0': Invalid argument
-libbpf: prog 'bpf_prog': failed to auto-attach: -22
-```
-
+> 你可能还有疑惑。
+>
+> 因为你cat /sys/kernel/tracing/trace_pipe 的输出结果很可能是空的。
+>
+> 那是因为你没有开启 trace
+>
+> 执行如下 shell 脚本
+>
+> `echo 1 > /sys/kernel/tracing/tracing_on`
 
 
 
 
 
+# 总结
 
 
 
+1.eBPF 的程序其实包含两个部分
 
+​	a. 内核态程序（这个程序会在内核虚拟机内执行）
+
+​	b. 用户态程序——前端（这个程序会用于加载并与内核态程序通讯，虽然 Demo 中没有体现通讯这一过程，但是他是可以实现的）
+
+2.libbpf 程序
+
+​	a. 最终产物只有一个 elf 文件，这个 elf 内包含用户态程序 & 内核态程序的二进制数据。
+
+​	b. libbpf 编译过程中会生成 skel 文件，这个文件内包含一些 eBPF 生命周期模板方法。
+
+​	c. libbpf 以及其他 eBPF 脚手架一样，都只是 eBPF 前端（后端在内核态上运行）
+
+> eBPF 的脚手架特别多，libbpf 只是其中一种。
+>
+> 常见的有
+>
+> - libbpf——C/C++
+> - [BCC](https://github.com/iovisor/bcc) ——Python
+> - [Cilium](https://github.com/cilium/cilium) ——Go
+> - [aya](https://github.com/aya-rs/aya)——Rust
+> - [bpftrace](https://github.com/bpftrace/bpftrace) —— bpftrace 规则语法（把他当成语言可能有些牵强～）
+>
+> 所以没必要纠结需要使用哪种，哪种顺手就用哪种～
 
 
 
