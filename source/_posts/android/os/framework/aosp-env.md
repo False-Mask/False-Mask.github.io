@@ -289,6 +289,137 @@ process handle SIGSEGV -n true -p true -s false
 
 
 
+## Art 调试环境
+
+
+
+> art中的很多代码是做了优化的，这会导致。我们断点无法对应上。
+>
+> 需要做如下修改以防止代码优化。
+
+art/build/Android.bp
+
+```plaintText
+art_module_art_global_defaults {
+    // Additional flags are computed by art.go
+
+    name: "art_defaults",
+
+   // ......
+
+    cflags: [
+        // Base set of cflags used by all things ART.
+        "-fno-rtti",
+        "-ggdb3",
+        "-Wall",
+        "-Werror",
+        "-Wextra",
+        "-Wstrict-aliasing",
+        "-fstrict-aliasing",
+        "-Wunreachable-code",
+        "-Wredundant-decls",
+        "-Wshadow",
+        "-Wunused",
+        "-fvisibility=protected",
+        "-O0", // 启用基础优化以减少栈使用
+        "-fno-inline", // 可选：禁用函数内联
+        "-fno-inline-functions-called-once", // 进一步禁用内联
+        "-fno-optimize-sibling-calls", // 进一步禁用内联
+        "-Wno-error=frame-larger-than", // 堆栈大小超出不报错
+        "-Wno-frame-larger-than", // 关闭堆栈大小检查
+        "-fno-omit-frame-pointer", // 保留栈针
+        "-g3", // 生成调试信息
+
+        // Warn about thread safety violations with clang.
+        "-Wthread-safety",
+        // TODO(b/144045034): turn on -Wthread-safety-negative
+        //"-Wthread-safety-negative",
+
+        // Warn if switch fallthroughs aren't annotated.
+        "-Wimplicit-fallthrough",
+
+        // Enable float equality warnings.
+        "-Wfloat-equal",
+
+        // Enable warning of converting ints to void*.
+        "-Wint-to-void-pointer-cast",
+
+        // Enable warning of wrong unused annotations.
+        "-Wused-but-marked-unused",
+
+        // Enable warning for deprecated language features.
+        "-Wdeprecated",
+
+        // Enable warning for unreachable break & return.
+        "-Wunreachable-code-break",
+        "-Wunreachable-code-return",
+
+        // Disable warning for use of offsetof on non-standard layout type.
+        // We use it to implement OFFSETOF_MEMBER - see macros.h.
+        "-Wno-invalid-offsetof",
+
+        // Enable inconsistent-missing-override warning. This warning is disabled by default in
+        // Android.
+        "-Winconsistent-missing-override",
+
+        // Enable thread annotations for std::mutex, etc.
+        "-D_LIBCPP_ENABLE_THREAD_SAFETY_ANNOTATIONS",
+    ],
+    
+    // ......
+
+}
+
+```
+
+
+
+art/runtime/Android.bp
+
+```plaintText
+// Properties common to `libart` and `libart-broken`.
+art_cc_defaults {
+    name: "libart_common_defaults",
+   // ....
+    target: {
+        android: {
+            lto: {
+                thin: false,
+            },
+        },
+    },
+    
+    // .....
+}
+```
+
+
+
+> 在配置修改完成以后需要编译一个apex,然后安装。
+>
+> 具体流程可参考 (如果想集成到系统镜像中，也可以参考，但是安装起来需要刷机，挺麻烦的)
+>
+> art/build/README.md
+
+```
+# 编译apex（测试版将pkg 替换为 com.android.art.debug）
+banchan com.android.art <arch>
+export SOONG_ALLOW_MISSING_DEPENDENCIES=true
+
+# 编译
+m apps_only dist
+
+# 安装 & 重启
+adb install out/dist/com.android.art.apex
+adb reboot
+```
+
+
+
+
+
+
+
 # 其他
 
 
