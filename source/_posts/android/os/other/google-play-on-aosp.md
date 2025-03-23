@@ -421,6 +421,85 @@ com.android.omadm.service.xml          com.android.sdm.plugins.diagmon.xml  com.
 
 
 
+## 2025/3/23——补充
+
+
+
+> 最近几天在我自己的Pixel6手机上刷入了aosp 14.0.0_r71系统。
+>
+> 提取指定BuildId的Pixel 镜像中的GMS后发现。虽然不会死机了
+>
+> but会出现崩溃。主要是权限的问题。
+
+![image-20250323183244572](https://typora-blog-picture.oss-cn-chengdu.aliyuncs.com/blog/image-20250323183244572.png)
+
+``` plaintText
+Process: com.android.vending:background, PID: 17274
+                                                                                                    java.lang.RuntimeException: Unable to start service com.google.android.finsky.downloadservice.DownloadService@cf51d31 with Intent { act=com.google.android.finsky.BIND_DOWNLOAD_SERVICE pkg=com.android.vending (has extras) }: java.lang.SecurityException: Starting FGS with type systemExempted callerApp=ProcessRecord{9ada412 17274:com.android.vending:background/u0a128} targetSDK=35 requires permissions: all of the permissions allOf=true [android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED] any of the permissions allOf=false [android.permission.SCHEDULE_EXACT_ALARM, android.permission.USE_EXACT_ALARM, android:activate_vpn] 
+                                                                                                    	at android.app.ActivityThread.handleServiceArgs(ActivityThread.java:5100)
+                                                                                                    	at android.app.ActivityThread.-$$Nest$mhandleServiceArgs(Unknown Source:0)
+                                                                                                    	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:2432)
+                                                                                                    	at android.os.Handler.dispatchMessage(Handler.java:107)
+                                                                                                    	at android.os.Looper.loopOnce(Looper.java:232)
+                                                                                                    	at android.os.Looper.loop(Looper.java:317)
+                                                                                                    	at android.app.ActivityThread.main(ActivityThread.java:8592)
+                                                                                                    	at java.lang.reflect.Method.invoke(Native Method)
+                                                                                                    	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:580)
+                                                                                                    	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:878)
+                                                                                                    Caused by: java.lang.SecurityException: Starting FGS with type systemExempted callerApp=ProcessRecord{9ada412 17274:com.android.vending:background/u0a128} targetSDK=35 requires permissions: all of the permissions allOf=true [android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED] any of the permissions allOf=false [android.permission.SCHEDULE_EXACT_ALARM, android.permission.USE_EXACT_ALARM, android:activate_vpn] 
+                                                                                                    	at android.os.Parcel.createExceptionOrNull(Parcel.java:3183)
+                                                                                                    	at android.os.Parcel.createException(Parcel.java:3167)
+                                                                                                    	at android.os.Parcel.readException(Parcel.java:3150)
+                                                                                                    	at android.os.Parcel.readException(Parcel.java:3092)
+                                                                                                    	at android.app.IActivityManager$Stub$Proxy.setServiceForeground(IActivityManager.java:6960)
+                                                                                                    	at android.app.Service.startForeground(Service.java:776)
+                                                                                                    	at com.google.android.finsky.downloadservice.DownloadService.onStartCommand(PG:37)
+                                                                                                    	at android.app.ActivityThread.handleServiceArgs(ActivityThread.java:5082)
+                                                                                                    	at android.app.ActivityThread.-$$Nest$mhandleServiceArgs(Unknown Source:0) 
+                                                                                                    	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:2432) 
+                                                                                                    	at android.os.Handler.dispatchMessage(Handler.java:107) 
+                                                                                                    	at android.os.Looper.loopOnce(Looper.java:232) 
+                                                                                                    	at android.os.Looper.loop(Looper.java:317) 
+                                                                                                    	at android.app.ActivityThread.main(ActivityThread.java:8592) 
+                                                                                                    	at java.lang.reflect.Method.invoke(Native Method) 
+                                                                                                    	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:580) 
+                                                                                                    	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:878) 
+                                                                                                    Caused by: android.os.RemoteException: Remote stack trace:
+                                                                                                    	at com.android.server.am.ActiveServices.validateForegroundServiceType(ActiveServices.java:2842)
+                                                                                                    	at com.android.server.am.ActiveServices.setServiceForegroundInnerLocked(ActiveServices.java:2530)
+                                                                                                    	at com.android.server.am.ActiveServices.setServiceForegroundLocked(ActiveServices.java:1806)
+                                                                                                    	at com.android.server.am.ActivityManagerService.setServiceForeground(ActivityManagerService.java:13795)
+                                                                                                    	at android.app.IActivityManager$Stub.onTransact(IActivityManager.java:3483)
+```
+
+
+
+解决方法如下。
+
+- 通过xargs需要新增权限
+
+``` xml
+// privapp-permissions-google-p.xml   
+<permission name="android.permission.USE_EXACT_ALARM"/>
+<permission name="android.permission.SCHEDULE_EXACT_ALARM"/>
+<permission name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED"/>
+```
+
+- 通过appops赋权
+
+``` shell
+# 赋予ACTIVATE_VPN权限。
+adb shell appops set com.android.vending ACTIVATE_VPN  allow
+```
+
+- 清空Google play & GMS 应用数据 & 强杀进程
+
+  
+
+
+
+
+
 
 
 ### 其他问题
