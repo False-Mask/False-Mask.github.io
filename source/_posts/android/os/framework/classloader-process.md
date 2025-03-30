@@ -1,16 +1,23 @@
 ---
-title: Android类加载流程解析
+title: Android ClassLoader加载流程解析
 tags:
-- android
-- aosp
-cover:
+  - android
+  - aosp
+cover: >-
+  https://typora-blog-picture.oss-cn-chengdu.aliyuncs.com/blog/loadclass-and-classforname.png
+date: 2025-03-31 00:20:47
 ---
 
 
 
-# Android 类加载流程
+
+# Android ClassLoader加载流程
 
 
+
+> Note：
+>
+> 本文主要是针对于ClassLoader加载逻辑进行分析，并未对Class define逻辑进行分析。
 
 ![loadclass-and-classforname](https://typora-blog-picture.oss-cn-chengdu.aliyuncs.com/blog/loadclass-and-classforname.png)
 
@@ -951,7 +958,7 @@ static jclass DexFile_defineClassNative(JNIEnv* env,
 
 
 
-# 过程中的疑问
+# QA
 
 
 
@@ -959,14 +966,117 @@ static jclass DexFile_defineClassNative(JNIEnv* env,
 
 ## 为什么需要两套类加载机制（Java & Native）
 
-1. DexElement是什么有什么用
 
-2. 类加载流程？
-3. ClassLinker::RegisterDexFile是什么？
-4. dexCache是什么有什么用，为什么每个class都会对于一个dexCache
-5. classTable是什么？为什么每个classloader会对于一个
-6. VerifyObject是什么和VerifyClass过程有关联吗
-7. 显示loadClass的代码的加载流程我们知道，但是如ClassA a = new ClassA这种代码是如何加载Class的呢？
+
+> 眼尖的小伙伴或许能发现我们流程图中有两个类加载的逻辑。
+
+![double-load-class-process.drawio](https://typora-blog-picture.oss-cn-chengdu.aliyuncs.com/blog/double-load-class-process.drawio.png)
+
+
+
+> 问题来了，为什么需要设计两套呢？
+>
+> 我自己结合对代码的理解给出一种解释（不一定对）：
+
+***首先先说结论，出现两套的原因是历史原因，最开始类加载是Java代码 ，后续工程师发现Java代码加载速度比较慢，接着就将一些常用的ClassLoader直接在Native实现了一份以提升性能。因此只有部分我们比较熟知的系统ClassLoader的加载逻辑是走的Native实现，其他的都是走的Java实现。***
+
+
+
+类加载代码最早是Java代码这点其实不太准确，准确的来说应该是最早是在java层控制类加载的顺序（先从哪里找然后再从哪里找，最后再......）
+
+第二点java代码的执行速度慢这个问题，其实能从代码的注释中发现, FindClassInPathClassLoader是作为一个fast-path, 只有当classloader是系统熟知的一些ClassLoader(PathClassLoader, InMemoryDexClassLoader, BootClassLoader......)才会走对应的逻辑。如果是自定义的ClassLoader将会走Java逻辑代码。
+
+```c++
+static jclass VMClassLoader_findLoadedClass(JNIEnv* env, jclass, jobject javaLoader,
+                                            jstring javaName) {
+  // .......
+ 
+  // Hard-coded performance optimization: We know that all failed libcore calls to findLoadedClass
+  //                                      are followed by a call to the the classloader to actually
+  //                                      load the class.
+  if (loader != nullptr) {
+    // Try the common case.
+    StackHandleScope<1> hs(soa.Self());
+    c = VMClassLoader::FindClassInPathClassLoader(cl,
+                                                  soa,
+                                                  soa.Self(),
+                                                  descriptor.c_str(),
+                                                  descriptor_hash,
+                                                  hs.NewHandle(loader));
+    if (c != nullptr) {
+      return soa.AddLocalReference<jclass>(c);
+    }
+  }
+
+  // The class wasn't loaded, yet, and our fast-path did not apply (e.g., we didn't understand the
+  // classloader chain).
+  return nullptr;
+    
+}
+```
+
+
+
+## DexElement, DexFile, DexCahe,  ClassTable 是什么
+
+refs: https://juejin.cn/post/7047680282463305735?searchId=202503301638213703DE9FA4841F24C422
+
+1. DexElement是DexFile的Java表示形式(通过JNI持有native引用。)
+
+```c++
+// TODO(calin): clean up the unused parameters (here and in libcore).
+static jobject DexFile_openDexFileNative(JNIEnv* env,
+                                         jclass,
+                                         jstring javaSourceName,
+                                         [[maybe_unused]] jstring javaOutputName,
+                                         [[maybe_unused]] jint flags,
+                                         jobject class_loader,
+                                         jobjectArray dex_elements) {
+  ScopedUtfChars sourceName(env, javaSourceName);
+  if (sourceName.c_str() == nullptr) {
+    return nullptr;
+  }
+
+  if (isReadOnlyJavaDclChecked() && access(sourceName.c_str(), W_OK) == 0) {
+    LOG(ERROR) << "Attempt to load writable dex file: " << sourceName.c_str();
+    if (isReadOnlyJavaDclEnforced(env)) {
+      ScopedLocalRef<jclass> se(env, env->FindClass("java/lang/SecurityException"));
+      std::string message(
+          StringPrintf("Writable dex file '%s' is not allowed.", sourceName.c_str()));
+      env->ThrowNew(se.get(), message.c_str());
+      return nullptr;
+    }
+  }
+
+  std::vector<std::string> error_msgs;
+  const OatFile* oat_file = nullptr;
+    // 加载dex文件
+  std::vector<std::unique_ptr<const DexFile>> dex_files =
+      Runtime::Current()->GetOatFileManager().OpenDexFilesFromOat(sourceName.c_str(),
+                                                                  class_loader,
+                                                                  dex_elements,
+                                                                  /*out*/ &oat_file,
+                                                                  /*out*/ &error_msgs);
+    // 将dexFiles, oat_file转为为handle返回给java层。
+  return CreateCookieFromOatFileManagerResult(env, dex_files, oat_file, error_msgs);
+}
+```
+
+
+
+2. DexFile是”dex文件“的对象形式
+
+![image-20250330164133409](https://typora-blog-picture.oss-cn-chengdu.aliyuncs.com/blog/image-20250330164133409.png)
+
+3. DexCache保存dex解析过程中的成员变量，方法，类型，字符串信息。(本文未作讲解)
+
+4. ClassTable是ClassLoader的类缓存表，用于缓存已经加载类，在类加载过程中用于快速返回结果
+
+> ClassLoader.loadClass会通过调用VMClassLoader.findLoadedClass寻找已经加载的所有类的信息。
+>
+> 而findLoadedClass会调用LookupClass从classTable中寻找当前已经加载的类信息。从而快速返回已加载的类。
+
+![image-20250330164802902](https://typora-blog-picture.oss-cn-chengdu.aliyuncs.com/blog/image-20250330164802902.png)
 
 
 
@@ -974,3 +1084,4 @@ static jclass DexFile_defineClassNative(JNIEnv* env,
 
 
 
+Class加载原理分析

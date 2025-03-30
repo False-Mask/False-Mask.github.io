@@ -78,7 +78,7 @@ https://juejin.cn/post/7484089347156295714
 
 > 设备能被识别，当时attach process找不到设备（右上角可见设备名称）
 
-![Screenshot from 2025-03-23 23-23-12](https://typora-blog-picture.oss-cn-chengdu.aliyuncs.com/blog/Screenshot from 2025-03-23 23-23-12.png)
+<img src="https://typora-blog-picture.oss-cn-chengdu.aliyuncs.com/blog/Screenshot from 2025-03-23 23-23-12.png" alt="Screenshot from 2025-03-23 23-23-12" />
 
 
 
