@@ -42,6 +42,7 @@ copy:
 social:
   # fab fa-github: https://github.com/xxxxx || Github
   fas fa-envelope: mailto:tu_zhi_qiang@qq.com || Email
+  RSS fa-solid fa-rss: /rss2.xml || RSS
 
 # search (搜索)
 # see https://butterfly.js.org/posts/ceeb73f/#搜索系統
