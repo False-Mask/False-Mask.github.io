@@ -13,6 +13,15 @@ cover:
 
 
 
+![image rendering components](https://typora-blog-picture.oss-cn-chengdu.aliyuncs.com/blog/ape-fwk-graphics.png)
+
+
+
+- producer
+- 
+
+
+
 
 
 # 基础概念
@@ -21,23 +30,87 @@ cover:
 
 
 
-## Canvas
-
-
-
-## OpenGL ES/Vulkan
+## Producer
 
 
 
 
 
-## Surface
+
+
+## Window Positioning
+
+
+
+- Window
+- WindowSession
+- WindowManager
+- WMS
 
 
 
 
 
-## Window
+
+
+# 原理讲解
+
+
+
+
+## 普通App渲染
+
+
+
+
+
+### 前置准备
+
+
+
+
+
+
+
+### ViewTree
+
+
+
+
+
+### RenderNode
+
+
+
+
+
+### DrawOps
+
+
+
+
+
+### OpenGL ES
+
+
+
+
+
+### HWC
+
+
+
+
+
+
+
+
+
+
+
+## SurfaceView渲染
+
+
 
 
 
@@ -50,3 +123,5 @@ cover:
 
 
 [官方文档 Android Graphics Architecture ](https://source.android.com/docs/core/graphics)
+
+[掘金博客](https://juejin.cn/post/7345679865185075234#heading-0)
