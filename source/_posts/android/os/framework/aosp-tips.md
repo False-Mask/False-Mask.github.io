@@ -448,11 +448,6 @@ arm64/boot-framework.art: 1 file pushed, 0 skipped. 371.7 MB/s (3682304 bytes in
 arm64/boot-framework.oat: 1 file pushed, 0 skipped. 94.9 MB/s (11949600 bytes in 0.120s)
 arm64/boot-framework.vdex: 1 file pushed, 0 skipped. 1649.7 MB/s (37728 bytes in 0.000s)
 3 files pushed, 0 skipped. 53.7 MB/s (15669632 bytes in 0.278s)
-
-➜  framework adb sync
-/data/: 201 files pushed, 0 skipped. 174.1 MB/s (261029915 bytes in 1.430s)
-/product/: 73 files pushed, 0 skipped. 16.9 MB/s (2265863 bytes in 0.128s)
-adb: error: failed to copy '/Users/rose/aosp/android-11.0.0_r46/out/target/product/bonito/system/bin/incident-helper-cmd' to '/system/bin/incident-helper-cmd': remote couldn't create file: Read-only file system
 ```
 
 
