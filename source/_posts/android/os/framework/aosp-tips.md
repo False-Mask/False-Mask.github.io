@@ -436,18 +436,10 @@ Error: no such Type or Enum 'WindowManagerServiceDumpProto' in Type .com.android
 
 > 解决方案。编译后刷入framework.jar以及其对应的oat文件
 
-``` shell
-➜  framework adb push arm/boot-framework.* /system/framework/arm/
-arm/boot-framework.art: 1 file pushed, 0 skipped. 312.8 MB/s (3571712 bytes in 0.011s)
-arm/boot-framework.oat: 1 file pushed, 0 skipped. 67.4 MB/s (9928288 bytes in 0.141s)
-arm/boot-framework.vdex: 1 file pushed, 0 skipped. 1402.3 MB/s (37728 bytes in 0.000s)
-3 files pushed, 0 skipped. 46.2 MB/s (13537728 bytes in 0.279s)
+> 推荐使用下方方式更新
 
-➜  framework adb push arm64/boot-framework.* /system/framework/arm64/
-arm64/boot-framework.art: 1 file pushed, 0 skipped. 371.7 MB/s (3682304 bytes in 0.009s)
-arm64/boot-framework.oat: 1 file pushed, 0 skipped. 94.9 MB/s (11949600 bytes in 0.120s)
-arm64/boot-framework.vdex: 1 file pushed, 0 skipped. 1649.7 MB/s (37728 bytes in 0.000s)
-3 files pushed, 0 skipped. 53.7 MB/s (15669632 bytes in 0.278s)
+``` shell
+➜  android-11.0.0_r46 adb push out/target/product/bonito/system/framework/ /system/
 ```
 
 
