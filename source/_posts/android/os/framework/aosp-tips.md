@@ -43,18 +43,121 @@ cover: https://typora-blog-picture.oss-cn-chengdu.aliyuncs.com/blog/aosp-andvanc
 
 ![Image_410772202840384](https://typora-blog-picture.oss-cn-chengdu.aliyuncs.com/blog/Image_410772202840384.jpg)
 
+``` plaintText
+[ 10% 54/521] Target userdata fs image: out/target/product/oriole/userdata.img
+FAILED: out/target/product/oriole/userdata.img
+/bin/bash -c "(mkdir -p out/target/product/oriole/data ) && (mkdir -p out/target
+/product/oriole/obj/PACKAGING/userdata_intermediates && rm -rf out/target/produc
+t/oriole/obj/PACKAGING/userdata_intermediates/userdata_image_info.txt ) && (echo
+ \"userdata_fs_type=f2fs\" >>  out/target/product/oriole/obj/PACKAGING/userdata_
+intermediates/userdata_image_info.txt ) && (echo \"userdata_size=11796480000\" >
+>  out/target/product/oriole/obj/PACKAGING/userdata_intermediates/userdata_image
+_info.txt ) && (echo \"needs_casefold=1\" >>  out/target/product/oriole/obj/PACK
+AGING/userdata_intermediates/userdata_image_info.txt ) && (echo \"needs_projid=1
+\" >>  out/target/product/oriole/obj/PACKAGING/userdata_intermediates/userdata_i
+mage_info.txt ) && (echo \"needs_compress=1\" >>  out/target/product/oriole/obj/
+PACKAGING/userdata_intermediates/userdata_image_info.txt ) && (echo \"userdata_s
+elinux_fc=out/target/product/oriole/obj/ETC/file_contexts.bin_intermediates/file
+_contexts.bin\" >>  out/target/product/oriole/obj/PACKAGING/userdata_intermediat
+es/userdata_image_info.txt ) && (echo \"building_userdata_image=true\" >>  out/t
+arget/product/oriole/obj/PACKAGING/userdata_intermediates/userdata_image_info.tx
+t ) && (echo \"ext_mkuserimg=mkuserimg_mke2fs\" >>  out/target/product/oriole/ob
+j/PACKAGING/userdata_intermediates/userdata_image_info.txt ) && (echo \"fs_type=
+ext4\" >>  out/target/product/oriole/obj/PACKAGING/userdata_intermediates/userda
+ta_image_info.txt ) && (echo \"extfs_sparse_flag=-s\" >>  out/target/product/ori
+ole/obj/PACKAGING/userdata_intermediates/userdata_image_info.txt ) && (echo \"er
+ofs_sparse_flag=-s\" >>  out/target/product/oriole/obj/PACKAGING/userdata_interm
+ediates/userdata_image_info.txt ) && (echo \"squashfs_sparse_flag=-s\" >>  out/t
+arget/product/oriole/obj/PACKAGING/userdata_intermediates/userdata_image_info.tx
+t ) && (echo \"f2fs_sparse_flag=-S\" >>  out/target/product/oriole/obj/PACKAGING
+/userdata_intermediates/userdata_image_info.txt ) && (echo \"ext4_share_dup_bloc
+ks=true\" >>  out/target/product/oriole/obj/PACKAGING/userdata_intermediates/use
+rdata_image_info.txt ) && (echo \"avb_avbtool=avbtool\" >>  out/target/product/o
+riole/obj/PACKAGING/userdata_intermediates/userdata_image_info.txt ) && (echo \"
+root_dir=out/target/product/oriole/root\" >>  out/target/product/oriole/obj/PACK
+AGING/userdata_intermediates/userdata_image_info.txt ) && (echo \"use_dynamic_pa
+rtition_size=true\" >>  out/target/product/oriole/obj/PACKAGING/userdata_interme
+diates/userdata_image_info.txt ) && (echo \"skip_fsck=true\" >>  out/target/prod
+uct/oriole/obj/PACKAGING/userdata_intermediates/userdata_image_info.txt ) && (so
+rt -o  out/target/product/oriole/obj/PACKAGING/userdata_intermediates/userdata_i
+mage_info.txt  out/target/product/oriole/obj/PACKAGING/userdata_intermediates/us
+erdata_image_info.txt ) && (PATH=out/host/linux-x86/bin/:system/extras/ext4_util
+s/:\$PATH out/host/linux-x86/bin/build_image --input-directory-filter-file out/t
+arget/product/oriole/obj/PACKAGING/userdata_intermediates/file_list.txt out/targ
+et/product/oriole/data out/target/product/oriole/obj/PACKAGING/userdata_intermed
+iates/userdata_image_info.txt out/target/product/oriole/userdata.img out/target/
+product/oriole/system ) && (size=\$(for i in out/target/product/oriole/userdata.
+img; do stat -c \"%s\" \"\$i\" | tr -d '\\n'; echo +; done; echo 0); total=\$(( 
+\$( echo \"\$size\" ) )); printname=\$(echo -n \"out/target/product/oriole/userd
+ata.img\" | tr \" \" +); maxsize=\$((11796480000)); if [ \"\$total\" -gt \"\$max
+size\" ]; then echo \"error: \$printname too large (\$total > \$maxsize)\"; fals
+e; elif [ \"\$total\" -gt \$((maxsize - 32768)) ]; then echo \"WARNING: \$printn
+ame approaching size limit (\$total now; limit \$maxsize)\"; fi )"
+2025-05-23 00:15:57 - build_image.py - ERROR   : Failed to build out/target/prod
+uct/oriole/userdata.img from out/target/product/oriole/tmp90j9_kku
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/Users/rose/aosp/android-14.0.0_r73/out/host/linux-x86/bin/build_image/_
+_main__.py", line 12, in <module>
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "build_image.py", line 1041, in <module>
+  File "build_image.py", line 1034, in main
+  File "build_image.py", line 936, in BuildImageOrVBMeta
+  File "build_image.py", line 649, in BuildImage
+  File "build_image.py", line 447, in BuildImageMkfs
+  File "common.py", line 328, in RunAndCheckOutput
+common.ExternalError: Failed to run command '['mkf2fsuserimg', 'out/target/produ
+ct/oriole/userdata.img', '11796480000', '-S', '-f', 'out/target/product/oriole/t
+mp90j9_kku', '-D', 'out/target/product/oriole/system', '-s', 'out/target/product
+/oriole/obj/ETC/file_contexts.bin_intermediates/file_contexts.bin', '-t', 'data'
+, '-L', 'data', '--prjquota', '--casefold', '--compression', '-b', '4096']' (exi
+t code 4):
+in mkf2fsuserimg.sh PATH=out/host/linux-x86/bin/:system/extras/ext4_utils/:/User
+s/rose/aosp/android-14.0.0_r73/prebuilts/build-tools/path/linux-x86:/Users/rose/
+aosp/android-14.0.0_r73/out/.path
+make_f2fs -g android -S 11796480000 -l data -O project_quota,extra_attr -O casef
+old -C utf8 -O compression,extra_attr -b 4096 -w 4096 out/target/product/oriole/
+userdata.img
+
+    F2FS-tools: mkfs.f2fs Ver: 1.16.0 (2023-04-11)
+
+Info: Disable heap-based policy
+Info: Debug level = 1
+Info: Label = data
+Info: Trim is disabled
+Info: Set conf for android
+Info: Enable utf8 with casefolding
+Info: Enable Project quota
+Info: Enable Compression
+Info: open /dev/loop1 failed errno:13
+	Error: Not available on mounted device!
+
+Out of space? Out of inodes? The tree size of out/target/product/oriole/tmp90j9_
+kku is 4096 bytes (0 MB), with reserved space of 0 bytes (0 MB).
+The max image size for filesystem files is 11796480000 bytes (11250 MB), out of 
+a total partition size of 11796480000 bytes (11250 MB).
+00:15:59 ninja failed with: exit status 1
+```
+
+
+
 - 解决方式
 
-https://juejin.cn/post/7484089347156295714
+https://discuss.grapheneos.org/d/15826-out-of-space-out-of-inodes/6
 
+https://www.huigll.com/asop-tangorpro-ap2a-userdebug-build-error/
 
-
-> note：
+> 其实从Info: open /dev/loop1 failed errno:13 Error: Not available on mounted device!
 >
-> 1. 报错原因有三个！！需要明确原因。不能盲目抄
-> 2. 需要明确报错的文件，每个img类型都有不同的参数控制
->
-> 3. 需要明确lunch type,不同的lunch type可能配置的参数不一样！！
+> 这个报错可以知晓是没权限读取磁盘，所以将当前用户添加到disk分组里面就有权限了，运行也就正常了
+
+```shell
+sudo usermod -aG disk $USER
+```
+
+
 
 
 
