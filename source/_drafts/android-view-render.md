@@ -1,6 +1,7 @@
 ---
 title: Android View渲染原理
 tags:
+- aosp
 cover:
 ---
 
@@ -12,7 +13,7 @@ cover:
 
 本文章属于专栏 Android 渲染原理分析 
 
-{% android/os/framework/ui-framework-overview Android渲染原理分析 %}
+
 
 
 
