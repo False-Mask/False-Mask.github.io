@@ -140,10 +140,20 @@ apt install sudo
 sudo apt install ssh
 ```
 
-2.配置ssh端口号
+2.配置sshd
 
 ```shell
-vim /etc/ssh/sshd_config
+# vim /etc/ssh/sshd_config
+
+# 配置端口号
+Port 2222
+
+# 允许root登陆
+PermitRootLogin yes
+
+# 公钥文件
+# 记得将key写入到authorized_keys路径下
+AuthorizedKeysFile      /.ssh/authorized_keys
 ```
 
 3.启动sshd
