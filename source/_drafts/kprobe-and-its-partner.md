@@ -181,9 +181,15 @@ Uprobs会函数进行插桩。将指令修改为中断，从而出发hook逻辑�
 
 # Tracepoint
 
+[Linux Docs](https://docs.kernel.org/trace/tracepoints.html)
+
+> A tracepoint placed in code provides a hook to call a function (probe) that you can provide at runtime. A tracepoint can be “on” (a probe is connected to it) or “off” (no probe is attached). When a tracepoint is “off” it has no effect, except for adding a tiny time penalty (checking a condition for a branch) and space penalty (adding a few bytes for the function call at the end of the instrumented function and adds a data structure in a separate section). When a tracepoint is “on”, the function you provide is called each time the tracepoint is executed, in the execution context of the caller. When the function provided ends its execution, it returns to the caller (continuing from the tracepoint site).
+>
+> 放置在代码中的跟踪点提供了一个钩子，用于调用可以在运行时提供的函数（探测）。跟踪点可以“开”（有探针连接到它）或“关”（没有连接探针）。当跟踪点处于“关闭”状态时，除了增加少量的时间惩罚（检查分支的条件）和空间惩罚（在检测函数的末尾为函数调用添加几个字节，并在单独的部分中添加数据结构）之外，它没有任何影响。当跟踪点处于“on”状态时，每次在调用者的执行上下文中执行跟踪点时都会调用您提供的函数
 
 
 
+> 简单总结就是：tracepoint是probe的入口，他通过调用一个特定的函数为probe提供了一个用于hook的钩子，probe可以选择attach到一个probe，每当tracepoint得到执行probe也会得到执行。你也可以选择不attach,那么tracepoint就会处于关闭的状态，关闭状态下的tracepoint会损失一点性能，以及损失一点空间。均可忽略不记。
 
 
 

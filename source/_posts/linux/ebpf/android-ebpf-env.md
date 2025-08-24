@@ -14,9 +14,7 @@ cover: https://typora-blog-picture.oss-cn-chengdu.aliyuncs.com/blog/overview.png
 
 # Android ebpf环境搭建
 
-
-
-
+主要用于配置ebpf的运行环境，开发环境不包含在内。
 
 
 

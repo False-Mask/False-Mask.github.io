@@ -471,3 +471,29 @@ Reading state information... Done
 
 
 
+## home路径错误
+
+
+
+问题：
+
+可能是chroot的缘故，chroot以后的home路径并非/etc/passwd声明的路径。
+
+其中/etc/passwd中的路径为/root，实际的home路径为/
+
+
+
+解决方法：
+
+在zsh中强制修改HOME
+
+``` shell
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/share/bcc/tools/
+export TMPDIR=/tmp/
+
+homedir=$( getent passwd "$USER" | cut -d: -f6 )
+export HOME=$homedir
+```
+
+
+
