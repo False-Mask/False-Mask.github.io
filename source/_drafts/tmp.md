@@ -114,3 +114,55 @@ onInit: dalvik.system.VMStack.getThreadStackTrace(Native Method)
 用户看到的画面是如何合成的？
 
 多个Window叠加的效果 -> 每个Window是由单独的App渲染 -> 最终通过WMS进行管理 -> SurfaceFlinger管理Layers -> HWC合成 -> HAL合成
+
+
+
+
+
+# invoke递归的问题
+
+
+
+``` c++
+NO_STACK_PROTECTOR
+static inline JValue Execute(
+    Thread* self,
+    const CodeItemDataAccessor& accessor,
+    ShadowFrame& shadow_frame,
+    JValue result_register,
+    bool stay_in_interpreter = false,
+    bool from_deoptimize = false) REQUIRES_SHARED(Locks::mutator_lock_) {
+
+
+// If we can continue in JIT and have JITed code available execute JITed code.
+    if (!stay_in_interpreter &&
+        !self->IsForceInterpreter() &&
+        !shadow_frame.GetForcePopFrame() &&
+        !shadow_frame.GetNotifyDexPcMoveEvents()) {
+      jit::Jit* jit = Runtime::Current()->GetJit();
+      if (jit != nullptr) {
+        jit->MethodEntered(self, shadow_frame.GetMethod());
+          // art认为是一个quickCode,递归了
+        if (jit->CanInvokeCompiledCode(method)) {
+          JValue result;
+
+          // Pop the shadow frame before calling into compiled code.
+          self->PopShadowFrame();
+          // Calculate the offset of the first input reg. The input registers are in the high regs.
+          // It's ok to access the code item here since JIT code will have been touched by the
+          // interpreter and compiler already.
+          uint16_t arg_offset = accessor.RegistersSize() - accessor.InsSize();
+          ArtInterpreterToCompiledCodeBridge(self, nullptr, &shadow_frame, arg_offset, &result);
+          // Push the shadow frame back as the caller will expect it.
+          self->PushShadowFrame(&shadow_frame);
+
+          return result;
+        }
+      }
+    }
+    
+    
+    
+}
+```
+
