@@ -891,14 +891,6 @@ function build_go
 
 ## bootstrap
 
-```shell
-soong_ui android/soong/cmd/soong_ui
-mk2rbc android/soong/mk2rbc/mk2rbc
-rbcrun rbcrun/rbcrun
-```
-
-
-
 
 
 ### soog_ui
@@ -906,7 +898,16 @@ rbcrun rbcrun/rbcrun
 
 
 ```shell
-/Users/rose/aosp/android-14.0.0_r73/out/microfactory_Linux -b /Users/rose/aosp/android-14.0.0_r73/out/microfactory_Linux             -pkg-path github.com/google/blueprint=/Users/rose/aosp/android-14.0.0_r73/build/blueprint             -trimpath /Users/rose/aosp/android-14.0.0_r73             -pkg-path android/soong=/Users/rose/aosp/android-14.0.0_r73/build/soong -pkg-path prebuilts/bazel/common/proto=/Users/rose/aosp/android-14.0.0_r73/prebuilts/bazel/common/proto -pkg-path rbcrun=/Users/rose/aosp/android-14.0.0_r73/build/make/tools/rbcrun -pkg-path google.golang.org/protobuf=/Users/rose/aosp/android-14.0.0_r73/external/golang-protobuf -pkg-path go.starlark.net=/Users/rose/aosp/android-14.0.0_r73/external/starlark-go             -o /Users/rose/aosp/android-14.0.0_r73/out/soong_ui android/soong/cmd/soong_ui
+/Users/rose/aosp/android-14.0.0_r73/out/microfactory_Linux 
+-b /Users/rose/aosp/android-14.0.0_r73/out/microfactory_Linux           
+-pkg-path github.com/google/blueprint=/Users/rose/aosp/android-14.0.0_r73/build/blueprint             
+-trimpath /Users/rose/aosp/android-14.0.0_r73             
+-pkg-path android/soong=/Users/rose/aosp/android-14.0.0_r73/build/soong 
+-pkg-path prebuilts/bazel/common/proto=/Users/rose/aosp/android-14.0.0_r73/prebuilts/bazel/common/proto 
+-pkg-path rbcrun=/Users/rose/aosp/android-14.0.0_r73/build/make/tools/rbcrun 
+-pkg-path google.golang.org/protobuf=/Users/rose/aosp/android-14.0.0_r73/external/golang-protobuf 
+-pkg-path go.starlark.net=/Users/rose/aosp/android-14.0.0_r73/external/starlark-go             
+-o /Users/rose/aosp/android-14.0.0_r73/out/soong_ui android/soong/cmd/soong_ui
 ```
 
 
@@ -920,7 +921,16 @@ rbcrun rbcrun/rbcrun
 
 
 ```shell
-/Users/rose/aosp/android-14.0.0_r73/out/microfactory_Linux -b /Users/rose/aosp/android-14.0.0_r73/out/microfactory_Linux             -pkg-path github.com/google/blueprint=/Users/rose/aosp/android-14.0.0_r73/build/blueprint             -trimpath /Users/rose/aosp/android-14.0.0_r73             -pkg-path android/soong=/Users/rose/aosp/android-14.0.0_r73/build/soong -pkg-path prebuilts/bazel/common/proto=/Users/rose/aosp/android-14.0.0_r73/prebuilts/bazel/common/proto -pkg-path rbcrun=/Users/rose/aosp/android-14.0.0_r73/build/make/tools/rbcrun -pkg-path google.golang.org/protobuf=/Users/rose/aosp/android-14.0.0_r73/external/golang-protobuf -pkg-path go.starlark.net=/Users/rose/aosp/android-14.0.0_r73/external/starlark-go             -o /Users/rose/aosp/android-14.0.0_r73/out/mk2rbc android/soong/mk2rbc/mk2rbc
+/Users/rose/aosp/android-14.0.0_r73/out/microfactory_Linux 
+-b /Users/rose/aosp/android-14.0.0_r73/out/microfactory_Linux             
+-pkg-path github.com/google/blueprint=/Users/rose/aosp/android-14.0.0_r73/build/blueprint             
+-trimpath /Users/rose/aosp/android-14.0.0_r73             
+-pkg-path android/soong=/Users/rose/aosp/android-14.0.0_r73/build/soong 
+-pkg-path prebuilts/bazel/common/proto=/Users/rose/aosp/android-14.0.0_r73/prebuilts/bazel/common/proto 
+-pkg-path rbcrun=/Users/rose/aosp/android-14.0.0_r73/build/make/tools/rbcrun 
+-pkg-path google.golang.org/protobuf=/Users/rose/aosp/android-14.0.0_r73/external/golang-protobuf 
+-pkg-path go.starlark.net=/Users/rose/aosp/android-14.0.0_r73/external/starlark-go             
+-o /Users/rose/aosp/android-14.0.0_r73/out/mk2rbc android/soong/mk2rbc/mk2rbc
 ```
 
 
@@ -932,8 +942,409 @@ rbcrun rbcrun/rbcrun
 
 
 ```shell
-/Users/rose/aosp/android-14.0.0_r73/out/microfactory_Linux -b /Users/rose/aosp/android-14.0.0_r73/out/microfactory_Linux             -pkg-path github.com/google/blueprint=/Users/rose/aosp/android-14.0.0_r73/build/blueprint             -trimpath /Users/rose/aosp/android-14.0.0_r73             -pkg-path android/soong=/Users/rose/aosp/android-14.0.0_r73/build/soong -pkg-path prebuilts/bazel/common/proto=/Users/rose/aosp/android-14.0.0_r73/prebuilts/bazel/common/proto -pkg-path rbcrun=/Users/rose/aosp/android-14.0.0_r73/build/make/tools/rbcrun -pkg-path google.golang.org/protobuf=/Users/rose/aosp/android-14.0.0_r73/external/golang-protobuf -pkg-path go.starlark.net=/Users/rose/aosp/android-14.0.0_r73/external/starlark-go             -o /Users/rose/aosp/android-14.0.0_r73/out/rbcrun rbcrun/rbcrun
+/Users/rose/aosp/android-14.0.0_r73/out/microfactory_Linux 
+-b /Users/rose/aosp/android-14.0.0_r73/out/microfactory_Linux             
+-pkg-path github.com/google/blueprint=/Users/rose/aosp/android-14.0.0_r73/build/blueprint             
+-trimpath /Users/rose/aosp/android-14.0.0_r73             
+-pkg-path android/soong=/Users/rose/aosp/android-14.0.0_r73/build/soong 
+-pkg-path prebuilts/bazel/common/proto=/Users/rose/aosp/android-14.0.0_r73/prebuilts/bazel/common/proto 
+-pkg-path rbcrun=/Users/rose/aosp/android-14.0.0_r73/build/make/tools/rbcrun 
+-pkg-path google.golang.org/protobuf=/Users/rose/aosp/android-14.0.0_r73/external/golang-protobuf 
+-pkg-path go.starlark.net=/Users/rose/aosp/android-14.0.0_r73/external/starlark-go             
+-o /Users/rose/aosp/android-14.0.0_r73/out/rbcrun rbcrun/rbcrun
 ```
+
+
+
+# soong_ui
+
+
+
+shell脚本
+
+```shell
+/Users/rose/aosp/android-14.0.0_r73/out/soong_ui 
+--build-mode 
+--all-modules 
+--dir=/Users/rose/aosp/android-14.0.0_r73
+```
+
+
+
+
+
+## init
+
+
+
+所有package下的init的方法都会进行component的注册
+
+以binary.go为例
+
+
+
+```go
+func init() {
+	RegisterBinaryBuildComponents(android.InitRegistrationContext)
+}
+
+func RegisterBinaryBuildComponents(ctx android.RegistrationContext) {
+	ctx.RegisterModuleType("cc_binary", BinaryFactory)
+	ctx.RegisterModuleType("cc_binary_host", BinaryHostFactory)
+}
+```
+
+
+
+### RegisterModuleType
+
+
+
+// register.go
+
+```go
+func (ctx *initRegistrationContext) RegisterModuleType(name string, factory ModuleFactory) {
+    // 确保之前没有注册过
+	if _, present := ctx.moduleTypes[name]; present {
+		panic(fmt.Sprintf("module type %q is already registered", name))
+	}
+    // 保存name & factory
+	ctx.moduleTypes[name] = factory
+    
+    
+    // 保存factory，moduleTypesForDocs，moduleTypeByFactory，数据结构如下
+    
+    // moduleType是包含name & factory的结构体
+    // var moduleTypes []moduleType
+    
+    // key为name, value为reflect.ValueOf(factory)
+	// var moduleTypesForDocs = map[string]reflect.Value{}
+    
+    // key为reflect.ValueOf(factory), value为name
+	// var moduleTypeByFactory = map[reflect.Value]string{}
+	RegisterModuleType(name, factory)
+	
+    // 好像是一个重复调用，RegisterModuleType已经调用过了
+    RegisterModuleTypeForDocs(name, reflect.ValueOf(factory))
+}
+```
+
+
+
+## main
+
+
+
+```go
+func main() {
+	shared.ReexecWithDelveMaybe(os.Getenv("SOONG_UI_DELVE"), shared.ResolveDelveBinary())
+
+	buildStarted := time.Now()
+
+	c, args, err := getCommand(os.Args)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing `soong` args: %s.\n", err)
+		os.Exit(1)
+	}
+
+	// Create a terminal output that mimics Ninja's.
+	output := terminal.NewStatusOutput(c.stdio().Stdout(), os.Getenv("NINJA_STATUS"), c.simpleOutput,
+		build.OsEnvironment().IsEnvTrue("ANDROID_QUIET_BUILD"),
+		build.OsEnvironment().IsEnvTrue("SOONG_UI_ANSI_OUTPUT"))
+
+	// Create and start a new metric record.
+	met := metrics.New()
+	met.SetBuildDateTime(buildStarted)
+	met.SetBuildCommand(os.Args)
+
+	// Attach a new logger instance to the terminal output.
+	log := logger.NewWithMetrics(output, met)
+	defer log.Cleanup()
+
+	// Create a context to simplify the program termination process.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Create a new trace file writer, making it log events to the log instance.
+	trace := tracer.New(log)
+	defer trace.Close()
+
+	// Create a new Status instance, which manages action counts and event output channels.
+	stat := &status.Status{}
+
+	// Hook up the terminal output and tracer to Status.
+	stat.AddOutput(output)
+	stat.AddOutput(trace.StatusTracer())
+
+	// Set up a cleanup procedure in case the normal termination process doesn't work.
+	signal.SetupSignals(log, cancel, func() {
+		trace.Close()
+		log.Cleanup()
+		stat.Finish()
+	})
+	criticalPath := status.NewCriticalPath()
+	buildCtx := build.Context{ContextImpl: &build.ContextImpl{
+		Context:      ctx,
+		Logger:       log,
+		Metrics:      met,
+		Tracer:       trace,
+		Writer:       output,
+		Status:       stat,
+		CriticalPath: criticalPath,
+	}}
+
+	freshConfig := func() build.Config {
+		config := c.config(buildCtx, args...)
+		config.SetLogsPrefix(c.logsPrefix)
+		return config
+	}
+	config := freshConfig()
+	logsDir := config.LogsDir()
+	buildStarted = config.BuildStartedTimeOrDefault(buildStarted)
+
+	buildErrorFile := filepath.Join(logsDir, c.logsPrefix+"build_error")
+	soongMetricsFile := filepath.Join(logsDir, c.logsPrefix+"soong_metrics")
+	rbeMetricsFile := filepath.Join(logsDir, c.logsPrefix+"rbe_metrics.pb")
+	soongBuildMetricsFile := filepath.Join(logsDir, c.logsPrefix+"soong_build_metrics.pb")
+
+	metricsFiles := []string{
+		buildErrorFile,        // build error strings
+		rbeMetricsFile,        // high level metrics related to remote build execution.
+		soongMetricsFile,      // high level metrics related to this build system.
+		soongBuildMetricsFile, // high level metrics related to soong build
+	}
+
+	os.MkdirAll(logsDir, 0777)
+
+	log.SetOutput(filepath.Join(logsDir, c.logsPrefix+"soong.log"))
+
+	trace.SetOutput(filepath.Join(logsDir, c.logsPrefix+"build.trace"))
+
+	log.Verbose("Command Line: ")
+	for i, arg := range os.Args {
+		log.Verbosef("  [%d] %s", i, arg)
+	}
+
+	// We need to call preProductConfigSetup before we can do product config, which is how we get
+	// PRODUCT_CONFIG_RELEASE_MAPS set for the final product config for the build.
+	// When product config uses a declarative language, we won't need to rerun product config.
+	preProductConfigSetup(buildCtx, config)
+	if build.SetProductReleaseConfigMaps(buildCtx, config) {
+		log.Verbose("Product release config maps found\n")
+		config = freshConfig()
+	}
+
+	defer func() {
+		stat.Finish()
+		criticalPath.WriteToMetrics(met)
+		met.Dump(soongMetricsFile)
+		if !config.SkipMetricsUpload() {
+			build.UploadMetrics(buildCtx, config, c.simpleOutput, buildStarted, metricsFiles...)
+		}
+	}()
+	c.run(buildCtx, config, args)
+
+}
+```
+
+
+
+
+
+### build.Build
+
+```go
+func Build(ctx Context, config Config) {
+	ctx.Verboseln("Starting build with args:", config.Arguments())
+	ctx.Verboseln("Environment:", config.Environment().Environ())
+
+	ctx.BeginTrace(metrics.Total, "total")
+	defer ctx.EndTrace()
+
+	if inList("help", config.Arguments()) {
+		help(ctx, config)
+		return
+	}
+
+	// Make sure that no other Soong process is running with the same output directory
+	buildLock := BecomeSingletonOrFail(ctx, config)
+	defer buildLock.Unlock()
+
+	logArgsOtherThan := func(specialTargets ...string) {
+		var ignored []string
+		for _, a := range config.Arguments() {
+			if !inList(a, specialTargets) {
+				ignored = append(ignored, a)
+			}
+		}
+		if len(ignored) > 0 {
+			ctx.Printf("ignoring arguments %q", ignored)
+		}
+	}
+
+	if inList("clean", config.Arguments()) || inList("clobber", config.Arguments()) {
+		logArgsOtherThan("clean", "clobber")
+		clean(ctx, config)
+		return
+	}
+
+	defer waitForDist(ctx)
+
+	// checkProblematicFiles aborts the build if Android.mk or CleanSpec.mk are found at the root of the tree.
+    // #1 前置准备check，如果根路径下有Android.mk or CleanSpec.mk 则直接报错退出。
+	checkProblematicFiles(ctx)
+	// ＃2 RAM 大小check，至少需要16GB
+	checkRAM(ctx, config)
+	//  #3 确保一些常见的文件存在
+	SetupOutDir(ctx, config)
+
+	// checkCaseSensitivity issues a warning if a case-insensitive file system is being used.
+    //  #4 确保当前文件系统是大小写敏感的。 
+	checkCaseSensitivity(ctx, config)
+	//  #5 通过symbolic link将$PATH下的二进制文件链接到out/.path路径下
+	SetupPath(ctx, config)
+	//  #6 计算后续的执行动作，将后续行为信息保存到what中
+	what := evaluateWhatToRun(config, ctx.Verboseln)
+	//  #7 
+	if config.StartGoma() {
+		startGoma(ctx, config)
+	}
+
+	rbeCh := make(chan bool)
+	var rbePanic any
+	if config.StartRBE() {
+		cleanupRBELogsDir(ctx, config)
+		checkRBERequirements(ctx, config)
+		go func() {
+			defer func() {
+				rbePanic = recover()
+				close(rbeCh)
+			}()
+			startRBE(ctx, config)
+		}()
+		defer DumpRBEMetrics(ctx, config, filepath.Join(config.LogsDir(), "rbe_metrics.pb"))
+	} else {
+		close(rbeCh)
+	}
+
+	if what&RunProductConfig != 0 {
+		runMakeProductConfig(ctx, config)
+	}
+
+	// Everything below here depends on product config.
+
+	if inList("installclean", config.Arguments()) ||
+		inList("install-clean", config.Arguments()) {
+		logArgsOtherThan("installclean", "install-clean")
+		installClean(ctx, config)
+		ctx.Println("Deleted images and staging directories.")
+		return
+	}
+
+	if inList("dataclean", config.Arguments()) ||
+		inList("data-clean", config.Arguments()) {
+		logArgsOtherThan("dataclean", "data-clean")
+		dataClean(ctx, config)
+		ctx.Println("Deleted data files.")
+		return
+	}
+
+	if what&RunSoong != 0 {
+		runSoong(ctx, config)
+	}
+
+	if what&RunKati != 0 {
+		genKatiSuffix(ctx, config)
+		runKatiCleanSpec(ctx, config)
+		runKatiBuild(ctx, config)
+		runKatiPackage(ctx, config)
+
+		ioutil.WriteFile(config.LastKatiSuffixFile(), []byte(config.KatiSuffix()), 0666) // a+rw
+	} else if what&RunKatiNinja != 0 {
+		// Load last Kati Suffix if it exists
+		if katiSuffix, err := ioutil.ReadFile(config.LastKatiSuffixFile()); err == nil {
+			ctx.Verboseln("Loaded previous kati config:", string(katiSuffix))
+			config.SetKatiSuffix(string(katiSuffix))
+		}
+	}
+
+	// Write combined ninja file
+	createCombinedBuildNinjaFile(ctx, config)
+
+	distGzipFile(ctx, config, config.CombinedNinjaFile())
+
+	if what&RunBuildTests != 0 {
+		testForDanglingRules(ctx, config)
+	}
+
+	<-rbeCh
+	if rbePanic != nil {
+		// If there was a ctx.Fatal in startRBE, rethrow it.
+		panic(rbePanic)
+	}
+
+	if what&RunNinja != 0 {
+		if what&RunKati != 0 {
+			installCleanIfNecessary(ctx, config)
+		}
+		runNinjaForBuild(ctx, config)
+	}
+
+	if what&RunDistActions != 0 {
+		runDistActions(ctx, config)
+	}
+}
+```
+
+
+
+
+
+
+
+### runMakeProductConfig 
+
+
+
+
+
+### runSong
+
+
+
+### runKatiBuild
+
+
+
+
+
+### runKatiPackage
+
+
+
+
+
+### createCombinedBuildNinjaFile
+
+
+
+
+
+### runNinja
+
+
+
+
+
+
+
+# refs
+
+
+
+在此感谢所有引用文章
+
+https://notion.iliuqi.com/article/make_of_android_compilation_principle
 
 
 

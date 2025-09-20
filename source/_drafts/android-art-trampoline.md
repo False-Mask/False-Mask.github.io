@@ -288,6 +288,16 @@ END art_quick_to_interpreter_bridge
 
 
 
+#### 虚拟机栈
+
+
+
+虚拟机栈
+
+![image-20250913213659699](https://typora-blog-picture.oss-cn-chengdu.aliyuncs.com/blog/image-20250913213659699.png)
+
+
+
 ### artQuickToInterpreterBridge
 
 art/runtime/entrypoints/quick/quick_trampoline_entrypoints.cc
@@ -384,6 +394,18 @@ extern "C" uint64_t artQuickToInterpreterBridge(ArtMethod* method, Thread* self,
   return NanBoxResultIfNeeded(result.GetJ(), shorty[0]);
 }
 ```
+
+
+
+#### CodeItemDataAccessor
+
+
+
+#### ShadowFrame
+
+
+
+#### ManagedStack
 
 
 
