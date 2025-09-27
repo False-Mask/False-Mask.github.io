@@ -1153,6 +1153,8 @@ func main() {
 
 ### build.Build
 
+#1~#7都是一些环境的配置，核心流程在#9 ~ # 12
+
 ```go
 func Build(ctx Context, config Config) {
 	ctx.Verboseln("Starting build with args:", config.Arguments())
@@ -1205,11 +1207,14 @@ func Build(ctx Context, config Config) {
 	SetupPath(ctx, config)
 	//  #6 计算后续的执行动作，将后续行为信息保存到what中
 	what := evaluateWhatToRun(config, ctx.Verboseln)
-	//  #7 
+	//  #7 用于进行分布式构建，不过是针对于google 内部研发同学。我们普通开发者不会进入这个分支执行
+    //  具体介绍可见：
+    //  https://chromium.googlesource.com/infra/goma/client/+/6bae3f8023bfb7b861b2c0b1e12aa0be55f0f829/README.md
 	if config.StartGoma() {
 		startGoma(ctx, config)
 	}
-
+	//  #8 依旧是远程构建系统，但是默认并没有启用。
+    //  具体可见： https://android.googlesource.com/platform/build/soong/+/48d9ec056/docs/rbe.md
 	rbeCh := make(chan bool)
 	var rbePanic any
 	if config.StartRBE() {
@@ -1226,7 +1231,8 @@ func Build(ctx Context, config Config) {
 	} else {
 		close(rbeCh)
 	}
-
+	
+    //  #9 代码逻辑执行第一步
 	if what&RunProductConfig != 0 {
 		runMakeProductConfig(ctx, config)
 	}
@@ -1249,10 +1255,12 @@ func Build(ctx Context, config Config) {
 		return
 	}
 
+    //  #10 执行soong
 	if what&RunSoong != 0 {
 		runSoong(ctx, config)
 	}
 
+    //  #11 执行kati
 	if what&RunKati != 0 {
 		genKatiSuffix(ctx, config)
 		runKatiCleanSpec(ctx, config)
@@ -1283,6 +1291,7 @@ func Build(ctx Context, config Config) {
 		panic(rbePanic)
 	}
 
+    //  #12 runNinja
 	if what&RunNinja != 0 {
 		if what&RunKati != 0 {
 			installCleanIfNecessary(ctx, config)
@@ -1302,19 +1311,299 @@ func Build(ctx Context, config Config) {
 
 
 
-### runMakeProductConfig 
+#### RunProductConfig 
+
+
+
+做一些环境变量的配置，其中用到了dumpMakeVars获取配置文件。
+
+```go
+func runMakeProductConfig(ctx Context, config Config) {
+	// Variables to export into the environment of Kati/Ninja
+	exportEnvVars := []string{
+		// So that we can use the correct TARGET_PRODUCT if it's been
+		// modified by a buildspec.mk
+		"TARGET_PRODUCT",
+		"TARGET_BUILD_VARIANT",
+		"TARGET_BUILD_APPS",
+		"TARGET_BUILD_UNBUNDLED",
+
+		// Additional release config maps
+		"PRODUCT_RELEASE_CONFIG_MAPS",
+
+		// compiler wrappers set up by make
+		"CC_WRAPPER",
+		"CXX_WRAPPER",
+		"RBE_WRAPPER",
+		"JAVAC_WRAPPER",
+		"R8_WRAPPER",
+		"D8_WRAPPER",
+
+		// ccache settings
+		"CCACHE_COMPILERCHECK",
+		"CCACHE_SLOPPINESS",
+		"CCACHE_BASEDIR",
+		"CCACHE_CPP2",
+
+		// LLVM compiler wrapper options
+		"TOOLCHAIN_RUSAGE_OUTPUT",
+	}
+
+	allVars := append(append([]string{
+		// Used to execute Kati and Ninja
+		"NINJA_GOALS",
+		"KATI_GOALS",
+
+		// To find target/product/<DEVICE>
+		"TARGET_DEVICE",
+
+		// So that later Kati runs can find BoardConfig.mk faster
+		"TARGET_DEVICE_DIR",
+
+		// Whether --werror_overriding_commands will work
+		"BUILD_BROKEN_DUP_RULES",
+
+		// Whether to enable the network during the build
+		"BUILD_BROKEN_USES_NETWORK",
+
+		// Extra environment variables to be exported to ninja
+		"BUILD_BROKEN_NINJA_USES_ENV_VARS",
+
+		// Used to restrict write access to source tree
+		"BUILD_BROKEN_SRC_DIR_IS_WRITABLE",
+		"BUILD_BROKEN_SRC_DIR_RW_ALLOWLIST",
+
+		// Not used, but useful to be in the soong.log
+		"TARGET_BUILD_TYPE",
+		"HOST_ARCH",
+		"HOST_2ND_ARCH",
+		"HOST_CROSS_ARCH",
+		"HOST_CROSS_2ND_ARCH",
+		"HOST_BUILD_TYPE",
+		"PRODUCT_SOONG_NAMESPACES",
+
+		"DEFAULT_WARNING_BUILD_MODULE_TYPES",
+		"DEFAULT_ERROR_BUILD_MODULE_TYPES",
+		"BUILD_BROKEN_PREBUILT_ELF_FILES",
+		"BUILD_BROKEN_TREBLE_SYSPROP_NEVERALLOW",
+		"BUILD_BROKEN_USES_BUILD_COPY_HEADERS",
+		"BUILD_BROKEN_USES_BUILD_EXECUTABLE",
+		"BUILD_BROKEN_USES_BUILD_FUZZ_TEST",
+		"BUILD_BROKEN_USES_BUILD_HEADER_LIBRARY",
+		"BUILD_BROKEN_USES_BUILD_HOST_EXECUTABLE",
+		"BUILD_BROKEN_USES_BUILD_HOST_JAVA_LIBRARY",
+		"BUILD_BROKEN_USES_BUILD_HOST_PREBUILT",
+		"BUILD_BROKEN_USES_BUILD_HOST_SHARED_LIBRARY",
+		"BUILD_BROKEN_USES_BUILD_HOST_STATIC_LIBRARY",
+		"BUILD_BROKEN_USES_BUILD_JAVA_LIBRARY",
+		"BUILD_BROKEN_USES_BUILD_MULTI_PREBUILT",
+		"BUILD_BROKEN_USES_BUILD_NATIVE_TEST",
+		"BUILD_BROKEN_USES_BUILD_NOTICE_FILE",
+		"BUILD_BROKEN_USES_BUILD_PACKAGE",
+		"BUILD_BROKEN_USES_BUILD_PHONY_PACKAGE",
+		"BUILD_BROKEN_USES_BUILD_PREBUILT",
+		"BUILD_BROKEN_USES_BUILD_RRO_PACKAGE",
+		"BUILD_BROKEN_USES_BUILD_SHARED_LIBRARY",
+		"BUILD_BROKEN_USES_BUILD_STATIC_JAVA_LIBRARY",
+		"BUILD_BROKEN_USES_BUILD_STATIC_LIBRARY",
+	}, exportEnvVars...), BannerVars...)
+
+	makeVars, err := dumpMakeVars(ctx, config, config.Arguments(), allVars, true, "")
+	if err != nil {
+		ctx.Fatalln("Error dumping make vars:", err)
+	}
+
+	env := config.Environment()
+	// Print the banner like make does
+	if !env.IsEnvTrue("ANDROID_QUIET_BUILD") {
+		fmt.Fprintln(ctx.Writer, Banner(makeVars))
+	}
+
+	// Populate the environment
+	for _, name := range exportEnvVars {
+		if makeVars[name] == "" {
+			env.Unset(name)
+		} else {
+			env.Set(name, makeVars[name])
+		}
+	}
+
+	config.SetKatiArgs(strings.Fields(makeVars["KATI_GOALS"]))
+	config.SetNinjaArgs(strings.Fields(makeVars["NINJA_GOALS"]))
+	config.SetTargetDevice(makeVars["TARGET_DEVICE"])
+	config.SetTargetDeviceDir(makeVars["TARGET_DEVICE_DIR"])
+	config.sandboxConfig.SetSrcDirIsRO(makeVars["BUILD_BROKEN_SRC_DIR_IS_WRITABLE"] == "false")
+	config.sandboxConfig.SetSrcDirRWAllowlist(strings.Fields(makeVars["BUILD_BROKEN_SRC_DIR_RW_ALLOWLIST"]))
+
+	config.SetBuildBrokenDupRules(makeVars["BUILD_BROKEN_DUP_RULES"] == "true")
+	config.SetBuildBrokenUsesNetwork(makeVars["BUILD_BROKEN_USES_NETWORK"] == "true")
+	config.SetBuildBrokenNinjaUsesEnvVars(strings.Fields(makeVars["BUILD_BROKEN_NINJA_USES_ENV_VARS"]))
+	config.SetIncludeTags(strings.Fields(makeVars["PRODUCT_INCLUDE_TAGS"]))
+	config.SetSourceRootDirs(strings.Fields(makeVars["PRODUCT_SOURCE_ROOT_DIRS"]))
+}
+```
+
+
+
+#### RunSong
+
+
+
+1.bootstrap
+
+2.writeEnvFile
+
+3.check
+
+4.run bpglob
+
+5.run ninja
+
+```go
+func runSoong(ctx Context, config Config) {
+	ctx.BeginTrace(metrics.RunSoong, "soong")
+	defer ctx.EndTrace()
+
+	if err := migrateOutputSymlinks(ctx, config); err != nil {
+		ctx.Fatalf("failed to migrate output directory to current TOP dir: %v", err)
+	}
+
+	// We have two environment files: .available is the one with every variable,
+	// .used with the ones that were actually used. The latter is used to
+	// determine whether Soong needs to be re-run since why re-run it if only
+	// unused variables were changed?
+	envFile := filepath.Join(config.SoongOutDir(), availableEnvFile)
+
+	// This is done unconditionally, but does not take a measurable amount of time
+	bootstrapBlueprint(ctx, config)
+
+	soongBuildEnv := config.Environment().Copy()
+	soongBuildEnv.Set("TOP", os.Getenv("TOP"))
+	soongBuildEnv.Set("LOG_DIR", config.LogsDir())
+
+	// For Soong bootstrapping tests
+	if os.Getenv("ALLOW_MISSING_DEPENDENCIES") == "true" {
+		soongBuildEnv.Set("ALLOW_MISSING_DEPENDENCIES", "true")
+	}
+
+	err := writeEnvironmentFile(ctx, envFile, soongBuildEnv.AsMap())
+	if err != nil {
+		ctx.Fatalf("failed to write environment file %s: %s", envFile, err)
+	}
+
+	func() {
+		ctx.BeginTrace(metrics.RunSoong, "environment check")
+		defer ctx.EndTrace()
+
+		checkEnvironmentFile(ctx, soongBuildEnv, config.UsedEnvFile(soongBuildTag))
+
+		// Remove bazel files in the event that bazel is disabled for the build.
+		// These files may have been left over from a previous bazel-enabled build.
+		cleanBazelFiles(config)
+
+		if config.JsonModuleGraph() {
+			checkEnvironmentFile(ctx, soongBuildEnv, config.UsedEnvFile(jsonModuleGraphTag))
+		}
+
+		if config.Queryview() {
+			checkEnvironmentFile(ctx, soongBuildEnv, config.UsedEnvFile(queryviewTag))
+		}
+
+		if config.SoongDocs() {
+			checkEnvironmentFile(ctx, soongBuildEnv, config.UsedEnvFile(soongDocsTag))
+		}
+	}()
+
+	runMicrofactory(ctx, config, "bpglob", "github.com/google/blueprint/bootstrap/bpglob",
+		map[string]string{"github.com/google/blueprint": "build/blueprint"})
+
+	ninja := func(targets ...string) {
+		ctx.BeginTrace(metrics.RunSoong, "bootstrap")
+		defer ctx.EndTrace()
+
+		fifo := filepath.Join(config.OutDir(), ".ninja_fifo")
+		nr := status.NewNinjaReader(ctx, ctx.Status.StartTool(), fifo)
+		defer nr.Close()
+
+		ninjaArgs := []string{
+			"-d", "keepdepfile",
+			"-d", "stats",
+			"-o", "usesphonyoutputs=yes",
+			"-o", "preremoveoutputs=yes",
+			"-w", "dupbuild=err",
+			"-w", "outputdir=err",
+			"-w", "missingoutfile=err",
+			"-j", strconv.Itoa(config.Parallel()),
+			"--frontend_file", fifo,
+			"-f", filepath.Join(config.SoongOutDir(), "bootstrap.ninja"),
+		}
+
+		if extra, ok := config.Environment().Get("SOONG_UI_NINJA_ARGS"); ok {
+			ctx.Printf(`CAUTION: arguments in $SOONG_UI_NINJA_ARGS=%q, e.g. "-n", can make soong_build FAIL or INCORRECT`, extra)
+			ninjaArgs = append(ninjaArgs, strings.Fields(extra)...)
+		}
+
+		ninjaArgs = append(ninjaArgs, targets...)
+		cmd := Command(ctx, config, "soong bootstrap",
+			config.PrebuiltBuildTool("ninja"), ninjaArgs...)
+
+		var ninjaEnv Environment
+
+		// This is currently how the command line to invoke soong_build finds the
+		// root of the source tree and the output root
+		ninjaEnv.Set("TOP", os.Getenv("TOP"))
+
+		cmd.Environment = &ninjaEnv
+		cmd.Sandbox = soongSandbox
+		cmd.RunAndStreamOrFatal()
+	}
+
+	targets := make([]string, 0, 0)
+
+	if config.JsonModuleGraph() {
+		targets = append(targets, config.ModuleGraphFile())
+	}
+
+	if config.Queryview() {
+		targets = append(targets, config.QueryviewMarkerFile())
+	}
+
+	if config.SoongDocs() {
+		targets = append(targets, config.SoongDocsHtml())
+	}
+	
+	if config.SoongBuildInvocationNeeded() {
+		// This build generates <builddir>/build.ninja, which is used later by build/soong/ui/build/build.go#Build().
+		targets = append(targets, config.SoongNinjaFile())
+	}
+
+	beforeSoongTimestamp := time.Now()
+	// #x 构建所有的ninja files
+	ninja(targets...)
+
+	loadSoongBuildMetrics(ctx, config, beforeSoongTimestamp)
+
+	distGzipFile(ctx, config, config.SoongNinjaFile(), "soong")
+	distFile(ctx, config, config.SoongVarsFile(), "soong")
+
+	if !config.SkipKati() {
+		distGzipFile(ctx, config, config.SoongAndroidMk(), "soong")
+		distGzipFile(ctx, config, config.SoongMakeVarsMk(), "soong")
+	}
+
+	if config.JsonModuleGraph() {
+		distGzipFile(ctx, config, config.ModuleGraphFile(), "soong")
+	}
+}
+```
 
 
 
 
-
-### runSong
 
 
 
 ### runKatiBuild
-
-
 
 
 

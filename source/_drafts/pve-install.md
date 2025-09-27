@@ -117,3 +117,41 @@ nmtui
 
 
 
+
+
+
+
+# A
+
+
+
+```
+network={
+        ssid="Netcore-BCA680-5G"
+        #psk="16031603.."
+        psk=c4e9c052e2e55e1592cccc457653e076a0b4730bcc8142edd0eb8dbcd623a7d9
+}
+```
+
+
+
+
+
+```shell
+# 寻找ssid
+iwlist wlp0s20f3 scan | grep "SSID"
+
+# 获取密钥
+wpa_passphrase YOUR_SSID YOUR_PASSWORD
+
+
+```
+
+
+
+
+
+
+
+
+

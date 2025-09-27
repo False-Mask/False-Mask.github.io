@@ -16,7 +16,7 @@ cover:
 
 
 
-## Invoke
+## ArtMethod::Invoke
 
 ```c++
 NO_STACK_PROTECTOR
@@ -115,9 +115,73 @@ void ArtMethod::Invoke(Thread* self, uint32_t* args, uint32_t args_size, JValue*
 
 
 
+```asm
+/**
+ * ARM64 Runtime register usage conventions.
+ *
+ *   r0     : w0 is 32-bit return register and x0 is 64-bit.
+ *   r0-r7  : Argument registers.
+ *   r8-r15 : Caller save registers (used as temporary registers).
+ *   r16-r17: Also known as ip0-ip1, respectively. Used as scratch registers by
+ *            the linker, by the trampolines and other stubs (the compiler uses
+ *            these as temporary registers).
+ *   r18    : Reserved for platform (SCS, shadow call stack)
+ *   r19    : Pointer to thread-local storage.
+ *   r20-r29: Callee save registers.
+ *   r30    : (lr) is reserved (the link register).
+ *   rsp    : (sp) is reserved (the stack pointer).
+ *   rzr    : (zr) is reserved (the zero register).
+ *
+ *   Floating-point registers
+ *   v0-v31
+ *
+ *   v0     : s0 is return register for singles (32-bit) and d0 for doubles (64-bit).
+ *            This is analogous to the C/C++ (hard-float) calling convention.
+ *   v0-v7  : Floating-point argument registers in both Dalvik and C/C++ conventions.
+ *            Also used as temporary and codegen scratch registers.
+ *
+ *   v0-v7 and v16-v31 : Caller save registers (used as temporary registers).
+ *   v8-v15 : bottom 64-bits preserved across C calls (d8-d15 are preserved).
+ *
+ *   v16-v31: Used as codegen temp/scratch.
+ *   v8-v15 : Can be used for promotion.
+ *
+ *   Must maintain 16-byte stack alignment.
+ *
+ * Nterp notes:
+ *
+ * The following registers have fixed assignments:
+ *
+ *   reg nick      purpose
+ *   x19  xSELF     self (Thread) pointer
+ *   x20  wMR       marking register
+ *   x21  xSUSPEND  suspend check register
+ *   x29  xFP       interpreted frame pointer, used for accessing locals and args
+ *   x22  xPC       interpreted program counter, used for fetching instructions
+ *   x23  xINST     first 16-bit code unit of current instruction
+ *   x24  xIBASE    interpreted instruction base pointer, used for computed goto
+ *   x25  xREFS     base of object references of dex registers.
+ *   x16  ip        scratch reg
+ *   x17  ip2       scratch reg (used by macros)
+ *
+ * Macros are provided for common operations.  They MUST NOT alter unspecified registers or
+ * condition codes.
+*/
+```
+
+
+
+
+
 ### art_quick_invoke_static_stub
 
 
+
+1.遵循AAPCS64规范对寄存器进行保存
+
+2.将Java函数参数保存到寄存器中
+
+3.调用二级trampoline跳板
 
 ```asm
 /*  extern"C"
@@ -146,21 +210,30 @@ END art_quick_invoke_static_stub
 
 
 
+堆栈内存结构，从高到低 
+
+x4, x5, \<padding\>(8 bytes), x19, x20, x21, FP, LR saved.
+
 ```asm
 .macro INVOKE_STUB_CREATE_FRAME
 SAVE_SIZE=8*8   // x4, x5, <padding>, x19, x20, x21, FP, LR saved.
+	// 保存x4,x5寄存器并更新sp的值为sp - 64
     SAVE_TWO_REGS_INCREASE_FRAME x4, x5, SAVE_SIZE
+    // 保存x19寄存器
     SAVE_REG      x19,      24
+    // 保存x20, x21寄存器
     SAVE_TWO_REGS x20, x21, 32
+    // 保存x29, x30寄存器
     SAVE_TWO_REGS xFP, xLR, 48
-
+	// 将sp寄存器存储到x29中
     mov xFP, sp                            // Use xFP for frame pointer, as it's callee-saved.
     .cfi_def_cfa_register xFP
-
+	// 为ArtMethod保留一些内存，并进行16字节对其
+	// Note: 此处x2为ArtMethod::Invoke中调用art_quick_invoke_stub传入的，其值为args_size
     add x10, x2, #(__SIZEOF_POINTER__ + 0xf) // Reserve space for ArtMethod*, arguments and
     and x10, x10, # ~0xf                   // round up for 16-byte stack alignment.
     sub sp, sp, x10                        // Adjust SP for ArtMethod*, args and alignment padding.
-
+	// 将线程对象保存到xSELF x19中
     mov xSELF, x3                          // Move thread pointer into SELF register.
 
     // Copy arguments into stack frame.
@@ -170,6 +243,8 @@ SAVE_SIZE=8*8   // x4, x5, <padding>, x19, x20, x21, FP, LR saved.
     // W2 - args length
     // X9 - destination address.
     // W10 - temporary
+    
+    // 将sp
     add x9, sp, #8                         // Destination address is bottom of stack + null.
 
     // Copy parameters into the stack. Use numeric label as this is a macro and Clang's assembler
@@ -188,6 +263,374 @@ SAVE_SIZE=8*8   // x4, x5, <padding>, x19, x20, x21, FP, LR saved.
 ```
 
 
+
+#### INVOKE_STUB_LOAD_ALL_ARGS
+
+将Java的参数从堆栈中保存到寄存器中
+
+```c++
+.macro INVOKE_STUB_LOAD_ALL_ARGS suffix
+    add x10, x5, #1                 // Load shorty address, plus one to skip the return type.
+
+    // Load this (if instance method) and addresses for routines that load WXSD registers.
+    .ifc \suffix, _instance
+        ldr w1, [x9], #4            // Load "this" parameter, and increment arg pointer.
+        adr x11, .Lload_w2\suffix
+        adr x12, .Lload_x2\suffix
+    .else
+        adr x11, .Lload_w1\suffix
+        adr x12, .Lload_x1\suffix
+    .endif
+    adr  x13, .Lload_s0\suffix
+    adr  x14, .Lload_d0\suffix
+
+    // Loop to fill registers.
+.Lfill_regs\suffix:
+    ldrb w17, [x10], #1             // Load next character in signature, and increment.
+    cbz w17, .Lcall_method\suffix   // Exit at end of signature. Shorty 0 terminated.
+
+    cmp w17, #'J'                   // Is this a long?
+    beq .Lload_long\suffix
+
+    cmp  w17, #'F'                  // Is this a float?
+    beq .Lload_float\suffix
+
+    cmp w17, #'D'                   // Is this a double?
+    beq .Lload_double\suffix
+
+    // Everything else uses a 4-byte GPR.
+    br x11
+
+.Lload_long\suffix:
+    br x12
+
+.Lload_float\suffix:
+    br x13
+
+.Lload_double\suffix:
+    br x14
+
+// Handlers for loading other args (not float/double/long) into W registers.
+    .ifnc \suffix, _instance
+        INVOKE_STUB_LOAD_REG \
+            .Lload_w1, w1, x9, 4, x11, .Lload_w2, x12, .Lload_x2, .Lfill_regs, \suffix
+    .endif
+    INVOKE_STUB_LOAD_REG .Lload_w2, w2, x9, 4, x11, .Lload_w3, x12, .Lload_x3, .Lfill_regs, \suffix
+    INVOKE_STUB_LOAD_REG .Lload_w3, w3, x9, 4, x11, .Lload_w4, x12, .Lload_x4, .Lfill_regs, \suffix
+    INVOKE_STUB_LOAD_REG .Lload_w4, w4, x9, 4, x11, .Lload_w5, x12, .Lload_x5, .Lfill_regs, \suffix
+    INVOKE_STUB_LOAD_REG .Lload_w5, w5, x9, 4, x11, .Lload_w6, x12, .Lload_x6, .Lfill_regs, \suffix
+    INVOKE_STUB_LOAD_REG .Lload_w6, w6, x9, 4, x11, .Lload_w7, x12, .Lload_x7, .Lfill_regs, \suffix
+    INVOKE_STUB_LOAD_REG .Lload_w7, w7, x9, 4, x11, .Lskip4, x12, .Lskip8, .Lfill_regs, \suffix
+
+// Handlers for loading longs into X registers.
+    .ifnc \suffix, _instance
+        INVOKE_STUB_LOAD_REG \
+            .Lload_x1, x1, x9, 8, x11, .Lload_w2, x12, .Lload_x2, .Lfill_regs, \suffix
+    .endif
+    INVOKE_STUB_LOAD_REG .Lload_x2, x2, x9, 8, x11, .Lload_w3, x12, .Lload_x3, .Lfill_regs, \suffix
+    INVOKE_STUB_LOAD_REG .Lload_x3, x3, x9, 8, x11, .Lload_w4, x12, .Lload_x4, .Lfill_regs, \suffix
+    INVOKE_STUB_LOAD_REG .Lload_x4, x4, x9, 8, x11, .Lload_w5, x12, .Lload_x5, .Lfill_regs, \suffix
+    INVOKE_STUB_LOAD_REG .Lload_x5, x5, x9, 8, x11, .Lload_w6, x12, .Lload_x6, .Lfill_regs, \suffix
+    INVOKE_STUB_LOAD_REG .Lload_x6, x6, x9, 8, x11, .Lload_w7, x12, .Lload_x7, .Lfill_regs, \suffix
+    INVOKE_STUB_LOAD_REG .Lload_x7, x7, x9, 8, x11, .Lskip4, x12, .Lskip8, .Lfill_regs, \suffix
+
+// Handlers for loading singles into S registers.
+    INVOKE_STUB_LOAD_REG .Lload_s0, s0, x9, 4, x13, .Lload_s1, x14, .Lload_d1, .Lfill_regs, \suffix
+    INVOKE_STUB_LOAD_REG .Lload_s1, s1, x9, 4, x13, .Lload_s2, x14, .Lload_d2, .Lfill_regs, \suffix
+    INVOKE_STUB_LOAD_REG .Lload_s2, s2, x9, 4, x13, .Lload_s3, x14, .Lload_d3, .Lfill_regs, \suffix
+    INVOKE_STUB_LOAD_REG .Lload_s3, s3, x9, 4, x13, .Lload_s4, x14, .Lload_d4, .Lfill_regs, \suffix
+    INVOKE_STUB_LOAD_REG .Lload_s4, s4, x9, 4, x13, .Lload_s5, x14, .Lload_d5, .Lfill_regs, \suffix
+    INVOKE_STUB_LOAD_REG .Lload_s5, s5, x9, 4, x13, .Lload_s6, x14, .Lload_d6, .Lfill_regs, \suffix
+    INVOKE_STUB_LOAD_REG .Lload_s6, s6, x9, 4, x13, .Lload_s7, x14, .Lload_d7, .Lfill_regs, \suffix
+    INVOKE_STUB_LOAD_REG .Lload_s7, s7, x9, 4, x13, .Lskip4, x14, .Lskip8, .Lfill_regs, \suffix
+
+// Handlers for loading doubles into D registers.
+    INVOKE_STUB_LOAD_REG .Lload_d0, d0, x9, 8, x13, .Lload_s1, x14, .Lload_d1, .Lfill_regs, \suffix
+    INVOKE_STUB_LOAD_REG .Lload_d1, d1, x9, 8, x13, .Lload_s2, x14, .Lload_d2, .Lfill_regs, \suffix
+    INVOKE_STUB_LOAD_REG .Lload_d2, d2, x9, 8, x13, .Lload_s3, x14, .Lload_d3, .Lfill_regs, \suffix
+    INVOKE_STUB_LOAD_REG .Lload_d3, d3, x9, 8, x13, .Lload_s4, x14, .Lload_d4, .Lfill_regs, \suffix
+    INVOKE_STUB_LOAD_REG .Lload_d4, d4, x9, 8, x13, .Lload_s5, x14, .Lload_d5, .Lfill_regs, \suffix
+    INVOKE_STUB_LOAD_REG .Lload_d5, d5, x9, 8, x13, .Lload_s6, x14, .Lload_d6, .Lfill_regs, \suffix
+    INVOKE_STUB_LOAD_REG .Lload_d6, d6, x9, 8, x13, .Lload_s7, x14, .Lload_d7, .Lfill_regs, \suffix
+    INVOKE_STUB_LOAD_REG .Lload_d7, d7, x9, 8, x13, .Lskip4, x14, .Lskip8, .Lfill_regs, \suffix
+
+// Handlers for skipping arguments that do not fit into registers.
+    INVOKE_STUB_SKIP_ARG .Lskip4, x9, 4, .Lfill_regs, \suffix
+    INVOKE_STUB_SKIP_ARG .Lskip8, x9, 8, .Lfill_regs, \suffix
+
+.Lcall_method\suffix:
+.endm
+```
+
+
+
+##### INVOKE_STUB_LOAD_REG
+
+通过注释可以得知这个宏定义是想将java方法参数拷贝到寄存器中
+
+- label 宏定义会为每个过程调用生成一个标签，label则是标签的前缀，后缀在哪呢？轻卡suffix
+- reg 参数最终需要拷贝到的寄存器名称
+- args 参数指针，每次读取会累加size个长度
+- size 参数大小
+- nh4_reg 4字节长度的寄存器，用于承载下一个处理单元的函数地址 
+- nh4_l 下一个处理单元的label名称
+- nh8_reg 同nh4_reg, 只不过长度为8字节
+- nh8_l 同nh4_l， 长度为8自己
+- cont 下一个用于处理shorty符号的label
+- suffix 标签后缀
+
+```asm
+// Macro for loading an argument into a register.
+//  label - the base name of the label of the load routine,
+//  reg - the register to load,
+//  args - pointer to current argument, incremented by size,
+//  size - the size of the register - 4 or 8 bytes,
+//  nh4_reg - the register to fill with the address of the next handler for 4-byte values,
+//  nh4_l - the base name of the label of the next handler for 4-byte values,
+//  nh8_reg - the register to fill with the address of the next handler for 8-byte values,
+//  nh8_l - the base name of the label of the next handler for 8-byte values,
+//  cont - the base name of the label for continuing the shorty processing loop,
+//  suffix - suffix added to all labels to make labels unique for different users.
+.macro INVOKE_STUB_LOAD_REG label, reg, args, size, nh4_reg, nh4_l, nh8_reg, nh8_l, cont, suffix
+\label\suffix:
+    ldr \reg, [\args], #\size
+    adr \nh4_reg, \nh4_l\suffix
+    adr \nh8_reg, \nh8_l\suffix
+    b \cont\suffix
+.endm
+```
+
+
+
+##### INVOKE_STUB_SKIP_ARG
+
+用于跳过参数读取的处理方法
+
+- label  标签名称
+- args 执行参数的指针
+- size 下个参数的大小
+- cont shorty 处理循环地址
+- suffix 标签后缀
+
+```asm
+// Macro for skipping an argument that does not fit into argument registers.
+//  label - the base name of the label of the skip routine,
+//  args - pointer to current argument, incremented by size,
+//  size - the size of the argument - 4 or 8 bytes,
+//  cont - the base name of the label for continuing the shorty processing loop,
+//  suffix - suffix added to all labels to make labels unique for different users.
+.macro INVOKE_STUB_SKIP_ARG label, args, size, cont, suffix
+\label\suffix:
+	// 读取一个函数参数并跳转到shorty loop中去
+    add \args, \args, #\size
+    b \cont\suffix
+.endm
+```
+
+
+
+
+
+##### loop branch 
+
+
+
+```asm
+.Lfill_regs\suffix:
+	// x10中存储了shorty args表示。
+	// 首先先读取一个字符保存到w17中并进行index的累加
+    ldrb w17, [x10], #1             // Load next character in signature, and increment.
+    // 判断是参数签名是否已经全部处理完毕，如果处理完毕，直接跳转到结尾
+    cbz w17, .Lcall_method\suffix   // Exit at end of signature. Shorty 0 terminated.
+	// 如果是一个Long类型的参数，跳转到long参数处理方法
+    cmp w17, #'J'                   // Is this a long?
+    beq .Lload_long\suffix
+	// 如果是float类型的参数，跳转到flaot参数处理方法中
+    cmp  w17, #'F'                  // Is this a float?
+    beq .Lload_float\suffix
+	// 如果是double类型的参数，跳转到double参数处理方法中
+    cmp w17, #'D'                   // Is this a double?
+    beq .Lload_double\suffix
+
+    // Everything else uses a 4-byte GPR.
+    // 其他所有参数都默认为4字节长度
+    br x11
+```
+
+
+
+
+
+##### call_method
+
+
+
+// TODO确认下，call_method的执行逻辑
+
+通过源码分析可以发现call_method label对应于INVOKE_STUB_LOAD_ALL_ARGS的下一行，也就是INVOKE_STUB_CALL_AND_RETURN的第一行指令。
+
+为什么呢？
+
+因为INVOKE_STUB_CREATE_FRAME, INVOKE_STUB_LOAD_ALL_ARGS, INVOKE_STUB_CALL_AND_RETURN都会被内联到art_quick_invoke_stub方法中
+
+```asm
+ENTRY art_quick_invoke_stub
+    // Spill registers as per AACPS64 calling convention.
+    INVOKE_STUB_CREATE_FRAME
+
+    // Load args into registers.
+    INVOKE_STUB_LOAD_ALL_ARGS _instance
+
+    // Call the method and return.
+    INVOKE_STUB_CALL_AND_RETURN
+END art_quick_invoke_stub
+
+
+
+.macro INVOKE_STUB_LOAD_ALL_ARGS
+
+// ......
+
+.Lcall_method\suffix:
+.endm
+
+```
+
+
+
+
+
+
+
+##### load_x
+
+这里的load_x是Lload_long/Lload_float/Lload_double
+
+代码非常的简单，就是直接跳转到特定的寄存器
+
+- x12 —— 存储读取long类型的参数的处理函数的地址
+- x13 —— 存储读取float类型的类型的处理函数的地址
+- x14——  存储读取double类型的类型的处理函数的地址
+
+```asm
+.Lload_long\suffix:
+    br x12
+
+.Lload_float\suffix:
+    br x13
+
+.Lload_double\suffix:
+    br x14
+```
+
+
+
+
+
+#### INVOKE_STUB_CALL_AND_RETURN
+
+```asm
+.macro INVOKE_STUB_CALL_AND_RETURN
+
+    REFRESH_MARKING_REGISTER
+    REFRESH_SUSPEND_CHECK_REGISTER
+
+    // load method-> METHOD_QUICK_CODE_OFFSET
+    ldr x9, [x0, #ART_METHOD_QUICK_CODE_OFFSET_64]
+    // Branch to method.
+    blr x9
+
+	// 弹出栈帧，包含artMethod(null), Java函数参数，对其字节
+    // Pop the ArtMethod* (null), arguments and alignment padding from the stack.
+    mov sp, xFP
+    .cfi_def_cfa_register sp
+
+	// 恢复之前保存的所有栈帧
+    // Restore saved registers including value address and shorty address.
+    RESTORE_REG      x19,      24
+    RESTORE_TWO_REGS x20, x21, 32
+    RESTORE_TWO_REGS xFP, xLR, 48
+    RESTORE_TWO_REGS_DECREASE_FRAME x4, x5, SAVE_SIZE
+
+	// 读取shorty signature的第一个字符，也就是返回值类型
+    // Store result (w0/x0/s0/d0) appropriately, depending on resultType.
+    ldrb w10, [x5]
+
+    // Check the return type and store the correct register into the jvalue in memory.
+    // Use numeric label as this is a macro and Clang's assembler does not have unique-id variables.
+
+    // Don't set anything for a void type.
+    // Void类型，直接返回不设置返回值（jump 到label1）
+    cmp w10, #'V'
+    beq 1f
+
+    // Is it a double?
+    // double类型，jump到label 2 将d0的值设置到x4对应的内存地址中
+    cmp w10, #'D'
+    beq 2f
+
+    // Is it a float?
+    // float类型，jump到label 3 将s0的值设置到x4对应的内存地址中
+    cmp w10, #'F'
+    beq 3f
+
+    // Just store x0. Doesn't matter if it is 64 or 32 bits.
+    // 其他情况，将x0的值直接设置到x4对于的内存中去
+    str x0, [x4]
+
+1:  // Finish up.
+    ret
+
+2:  // Store double.
+    str d0, [x4]
+    ret
+
+3:  // Store float.
+    str s0, [x4]
+    ret
+
+.endm
+```
+
+
+
+##### REFRESH_MARKING_REGISTER
+
+看着像是更新标记位
+
+```asm
+// Macro to refresh the Marking Register (W20).
+//
+// This macro must be called at the end of functions implementing
+// entrypoints that possibly (directly or indirectly) perform a
+// suspend check (before they return).
+.macro REFRESH_MARKING_REGISTER
+#ifdef RESERVE_MARKING_REGISTER
+    ldr wMR, [xSELF, #THREAD_IS_GC_MARKING_OFFSET]
+#endif
+.endm
+```
+
+
+
+##### REFRESH_SUSPEND_CHECK_REGISTER
+
+更新suspend标记
+
+```shell
+// Macro to refresh the suspend check register.
+//
+// We do not refresh `xSUSPEND` after every transition to Runnable, so there is
+// a chance that an implicit suspend check loads null to xSUSPEND but before
+// causing a SIGSEGV at the next implicit suspend check we make a runtime call
+// that performs the suspend check explicitly. This can cause a spurious fault
+// without a pending suspend check request but it should be rare and the fault
+// overhead was already expected when we triggered the suspend check, we just
+// pay the price later than expected.
+.macro REFRESH_SUSPEND_CHECK_REGISTER
+    ldr xSUSPEND, [xSELF, #THREAD_SUSPEND_TRIGGER_OFFSET]
+.endm
+```
 
 
 
@@ -403,6 +846,10 @@ extern "C" uint64_t artQuickToInterpreterBridge(ArtMethod* method, Thread* self,
 
 #### ShadowFrame
 
+用于在解释器中函数间传参，
+
+
+
 
 
 #### ManagedStack
@@ -437,7 +884,7 @@ JValue EnterInterpreterFromEntryPoint(Thread* self, const CodeItemDataAccessor& 
 
 ### Execute
 
-
+这里就一个注意点，执行过程中如果发现代码已经被jit了会通过调用ArtInterpreterToCompiledCodeBridge执行jit的代码
 
 ```c++
 NO_STACK_PROTECTOR
@@ -740,8 +1187,6 @@ DEX_INSTRUCTION_LIST(OPCODE_CASE)
 
 
 
-## 
-
 
 
 # QA
@@ -755,6 +1200,46 @@ DEX_INSTRUCTION_LIST(OPCODE_CASE)
 
 
 类加载链接阶段即LinkCode函数中写入
+
+
+
+
+
+# 灵感（最终会删除）
+
+
+
+## 关于函数传参
+
+
+
+如果一个Java方法A调用了另外一个Java方法B，参数是如何由A传到B中去的呢？
+
+invoke指令中会包含参数的寄存器(art寄存器)列表，这些寄存器内会保存art的参数，最终这些参数会通过ShadowFrame的方式传入到art内。并通过映射最终保存到另外。
+
+
+
+## 启动解释器以后
+
+
+
+在启动解释器以后不会再调用ArtMethod.Invoke方法执行下一个方法
+
+而是通过使用：
+
+interpreter::ArtInterpreterToInterpreterBridge -> 解释器到解释器
+
+interpreter::ArtInterpreterToCompiledCodeBridge -> 解释器到jit/aot/jni
+
+
+
+调用Invoke和调用ArtInterpreterToInterpreterBridge的区别在与是否需要调用一层跳板。
+
+如果是Invoke那么就需要调用一层跳板，如果是ArtInterpreterToInterpreterBridge就不需要调用一层跳板。
+
+解释器内部就会把环境准备好。（指的是ShadowFrame）
+
+
 
 
 
