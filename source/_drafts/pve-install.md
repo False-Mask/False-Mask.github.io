@@ -121,7 +121,7 @@ nmtui
 
 
 
-# A
+# stash
 
 
 
@@ -149,7 +149,15 @@ wpa_passphrase YOUR_SSID YOUR_PASSWORD
 
 
 
+https://www.bilibili.com/opus/938437808628957191
 
+
+
+其他记录：
+
+PVE不支持NetworkManager & systemd-neworkd 
+
+只兼容最基础的networking接口。如果有启用都会导致虚拟机无法启动
 
 
 

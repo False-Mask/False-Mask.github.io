@@ -324,6 +324,17 @@ Error: no such Type or Enum 'WindowManagerServiceDumpProto' in Type .com.android
 >
 > https://blog.csdn.net/fromair/article/details/145961344
 
+修改protos/build.js
+
+```
+// 之前
+const ANDROID_BUILD_TOP = __dirname + '/../../../../../main';
+// 之后
+const ANDROID_BUILD_TOP = __dirname + '/../../../..';
+```
+
+
+
 
 
 

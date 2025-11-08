@@ -1035,6 +1035,8 @@ func (ctx *initRegistrationContext) RegisterModuleType(name string, factory Modu
 
 
 
+配置参数，根据soongui的传参分配到特定的方法中去。对于我们构建而言，大概会分配到runMake方法中去。
+
 ```go
 func main() {
 	shared.ReexecWithDelveMaybe(os.Getenv("SOONG_UI_DELVE"), shared.ResolveDelveBinary())
@@ -1042,108 +1044,58 @@ func main() {
 	buildStarted := time.Now()
 
 	c, args, err := getCommand(os.Args)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing `soong` args: %s.\n", err)
-		os.Exit(1)
-	}
-
-	// Create a terminal output that mimics Ninja's.
-	output := terminal.NewStatusOutput(c.stdio().Stdout(), os.Getenv("NINJA_STATUS"), c.simpleOutput,
-		build.OsEnvironment().IsEnvTrue("ANDROID_QUIET_BUILD"),
-		build.OsEnvironment().IsEnvTrue("SOONG_UI_ANSI_OUTPUT"))
-
-	// Create and start a new metric record.
-	met := metrics.New()
-	met.SetBuildDateTime(buildStarted)
-	met.SetBuildCommand(os.Args)
-
-	// Attach a new logger instance to the terminal output.
-	log := logger.NewWithMetrics(output, met)
-	defer log.Cleanup()
-
-	// Create a context to simplify the program termination process.
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Create a new trace file writer, making it log events to the log instance.
-	trace := tracer.New(log)
-	defer trace.Close()
-
-	// Create a new Status instance, which manages action counts and event output channels.
-	stat := &status.Status{}
-
-	// Hook up the terminal output and tracer to Status.
-	stat.AddOutput(output)
-	stat.AddOutput(trace.StatusTracer())
-
-	// Set up a cleanup procedure in case the normal termination process doesn't work.
-	signal.SetupSignals(log, cancel, func() {
-		trace.Close()
-		log.Cleanup()
-		stat.Finish()
-	})
-	criticalPath := status.NewCriticalPath()
-	buildCtx := build.Context{ContextImpl: &build.ContextImpl{
-		Context:      ctx,
-		Logger:       log,
-		Metrics:      met,
-		Tracer:       trace,
-		Writer:       output,
-		Status:       stat,
-		CriticalPath: criticalPath,
-	}}
-
-	freshConfig := func() build.Config {
-		config := c.config(buildCtx, args...)
-		config.SetLogsPrefix(c.logsPrefix)
-		return config
-	}
-	config := freshConfig()
-	logsDir := config.LogsDir()
-	buildStarted = config.BuildStartedTimeOrDefault(buildStarted)
-
-	buildErrorFile := filepath.Join(logsDir, c.logsPrefix+"build_error")
-	soongMetricsFile := filepath.Join(logsDir, c.logsPrefix+"soong_metrics")
-	rbeMetricsFile := filepath.Join(logsDir, c.logsPrefix+"rbe_metrics.pb")
-	soongBuildMetricsFile := filepath.Join(logsDir, c.logsPrefix+"soong_build_metrics.pb")
-
-	metricsFiles := []string{
-		buildErrorFile,        // build error strings
-		rbeMetricsFile,        // high level metrics related to remote build execution.
-		soongMetricsFile,      // high level metrics related to this build system.
-		soongBuildMetricsFile, // high level metrics related to soong build
-	}
-
-	os.MkdirAll(logsDir, 0777)
-
-	log.SetOutput(filepath.Join(logsDir, c.logsPrefix+"soong.log"))
-
-	trace.SetOutput(filepath.Join(logsDir, c.logsPrefix+"build.trace"))
-
-	log.Verbose("Command Line: ")
-	for i, arg := range os.Args {
-		log.Verbosef("  [%d] %s", i, arg)
-	}
-
-	// We need to call preProductConfigSetup before we can do product config, which is how we get
-	// PRODUCT_CONFIG_RELEASE_MAPS set for the final product config for the build.
-	// When product config uses a declarative language, we won't need to rerun product config.
-	preProductConfigSetup(buildCtx, config)
-	if build.SetProductReleaseConfigMaps(buildCtx, config) {
-		log.Verbose("Product release config maps found\n")
-		config = freshConfig()
-	}
-
-	defer func() {
-		stat.Finish()
-		criticalPath.WriteToMetrics(met)
-		met.Dump(soongMetricsFile)
-		if !config.SkipMetricsUpload() {
-			build.UploadMetrics(buildCtx, config, c.simpleOutput, buildStarted, metricsFiles...)
-		}
-	}()
+	
+    // 各种各样的环境准备 略...
+    
+    // 执行命令
 	c.run(buildCtx, config, args)
 
+}
+
+// command列表
+// 这里的command都是soong_ui 这个命令行工具的args参数列表
+// 大多数情况下如果我们需要进行全量构建，都会执行到runMake中去。
+var commands = []command{
+	{
+		flag:        "--make-mode",
+		description: "build the modules by the target name (i.e. soong_docs)",
+		config:      build.NewConfig,
+		stdio:       stdio,
+		run:         runMake,
+	}, {
+		flag:         "--dumpvar-mode",
+		description:  "print the value of the legacy make variable VAR to stdout",
+		simpleOutput: true,
+		logsPrefix:   "dumpvars-",
+		config:       dumpVarConfig,
+		stdio:        customStdio,
+		run:          dumpVar,
+	}, {
+		flag:         "--dumpvars-mode",
+		description:  "dump the values of one or more legacy make variables, in shell syntax",
+		simpleOutput: true,
+		logsPrefix:   "dumpvars-",
+		config:       dumpVarConfig,
+		stdio:        customStdio,
+		run:          dumpVars,
+	}, {
+		flag:        "--build-mode",
+		description: "build modules based on the specified build action",
+		config:      buildActionConfig,
+		stdio:       stdio,
+		run:         runMake,
+	},
+}
+```
+
+
+
+触发构建流程
+
+```go
+func runMake(ctx build.Context, config build.Config, _ []string) {
+	// ......
+	build.Build(ctx, config)
 }
 ```
 
@@ -1151,7 +1103,7 @@ func main() {
 
 
 
-### build.Build
+## build.Build
 
 #1~#7都是一些环境的配置，核心流程在#9 ~ # 12
 
@@ -1307,19 +1259,44 @@ func Build(ctx Context, config Config) {
 
 
 
+从上述的构建流程的可以发现有几个比较核心的过程。这几个核心的过程都在固定的枚举类中有定义.
+
+之后会逐一进行介绍。
+
+```go
+const (
+	_ = iota
+	// Whether to run the kati config step.
+	RunProductConfig = 1 << iota
+	// Whether to run soong to generate a ninja file.
+	RunSoong = 1 << iota
+	// Whether to run kati to generate a ninja file.
+	RunKati = 1 << iota
+	// Whether to include the kati-generated ninja file in the combined ninja.
+	RunKatiNinja = 1 << iota
+	// Whether to run ninja on the combined ninja.
+	RunNinja       = 1 << iota
+	RunDistActions = 1 << iota
+	RunBuildTests  = 1 << iota
+)
+```
 
 
 
 
-#### RunProductConfig 
 
 
 
-做一些环境变量的配置，其中用到了dumpMakeVars获取配置文件。
+## RunProductConfig 
+
+
+
+做一些环境变量的配置，其中用到了dumpMakeVars获取配置文件
 
 ```go
 func runMakeProductConfig(ctx Context, config Config) {
 	// Variables to export into the environment of Kati/Ninja
+    // 初始化的编译参数列表
 	exportEnvVars := []string{
 		// So that we can use the correct TARGET_PRODUCT if it's been
 		// modified by a buildspec.mk
@@ -1348,7 +1325,8 @@ func runMakeProductConfig(ctx Context, config Config) {
 		// LLVM compiler wrapper options
 		"TOOLCHAIN_RUSAGE_OUTPUT",
 	}
-
+	
+    // 叠加了一部分编译参数
 	allVars := append(append([]string{
 		// Used to execute Kati and Ninja
 		"NINJA_GOALS",
@@ -1407,7 +1385,8 @@ func runMakeProductConfig(ctx Context, config Config) {
 		"BUILD_BROKEN_USES_BUILD_STATIC_JAVA_LIBRARY",
 		"BUILD_BROKEN_USES_BUILD_STATIC_LIBRARY",
 	}, exportEnvVars...), BannerVars...)
-
+	
+    // 调用dumpMakeVars获取参数列表
 	makeVars, err := dumpMakeVars(ctx, config, config.Arguments(), allVars, true, "")
 	if err != nil {
 		ctx.Fatalln("Error dumping make vars:", err)
@@ -1428,6 +1407,7 @@ func runMakeProductConfig(ctx Context, config Config) {
 		}
 	}
 
+    // 额外在设置一部分参数
 	config.SetKatiArgs(strings.Fields(makeVars["KATI_GOALS"]))
 	config.SetNinjaArgs(strings.Fields(makeVars["NINJA_GOALS"]))
 	config.SetTargetDevice(makeVars["TARGET_DEVICE"])
@@ -1445,17 +1425,17 @@ func runMakeProductConfig(ctx Context, config Config) {
 
 
 
-#### RunSong
+## RunSong
 
 
 
-1.bootstrap
+1.blueprint bootstrap
 
-2.writeEnvFile
+2.env check
 
-3.check
+3.run bpglob
 
-4.run bpglob
+4.soong bootstrap
 
 5.run ninja
 
@@ -1464,6 +1444,7 @@ func runSoong(ctx Context, config Config) {
 	ctx.BeginTrace(metrics.RunSoong, "soong")
 	defer ctx.EndTrace()
 
+    // 环境准备, 貌似是将output文件路径通过符号连接的方式迁移到top dir下
 	if err := migrateOutputSymlinks(ctx, config); err != nil {
 		ctx.Fatalf("failed to migrate output directory to current TOP dir: %v", err)
 	}
@@ -1599,29 +1580,327 @@ func runSoong(ctx Context, config Config) {
 
 
 
+### blueprint bootstrap
+
+方法的一大半都是在做配置参数的准备
+
+最后通过bootstrap.RunBlueprint方法触发blueprint的执行
+
+该执行过程会接受一个Android.bp.list(所有工程的*.bp文件路径)
+
+最终输出一个bootstrap.ninja
+
+
+
+注意bootstrap.ninja只包含Android.bp中bootstrap_go_package中的构建规则
+
+其中bootstrap_go_package是会参与并控制 soong 构建流程的。
+
+```go
+func bootstrapBlueprint(ctx Context, config Config) {
+    
+    // ......
+    
+    // 配置参数值
+	baseArgs := []string{"--soong_variables", config.SoongVarsFile()}
+
+	mainSoongBuildExtraArgs := append(baseArgs, "-o", config.SoongNinjaFile())
+	if config.EmptyNinjaFile() {
+		mainSoongBuildExtraArgs = append(mainSoongBuildExtraArgs, "--empty-ninja-file")
+	}
+	if config.buildFromSourceStub {
+		mainSoongBuildExtraArgs = append(mainSoongBuildExtraArgs, "--build-from-source-stub")
+	}
+	if config.ensureAllowlistIntegrity {
+		mainSoongBuildExtraArgs = append(mainSoongBuildExtraArgs, "--ensure-allowlist-integrity")
+	}
+
+	queryviewDir := filepath.Join(config.SoongOutDir(), "queryview")
+
+	pbfs := []PrimaryBuilderFactory{
+		{
+			name:         soongBuildTag,
+			description:  fmt.Sprintf("analyzing Android.bp files and generating ninja file at %s", config.SoongNinjaFile()),
+			config:       config,
+			output:       config.SoongNinjaFile(),
+			specificArgs: mainSoongBuildExtraArgs,
+		},
+		{
+			name:        jsonModuleGraphTag,
+			description: fmt.Sprintf("generating the Soong module graph at %s", config.ModuleGraphFile()),
+			config:      config,
+			output:      config.ModuleGraphFile(),
+			specificArgs: append(baseArgs,
+				"--module_graph_file", config.ModuleGraphFile(),
+				"--module_actions_file", config.ModuleActionsFile(),
+			),
+		},
+		{
+			name:        queryviewTag,
+			description: fmt.Sprintf("generating the Soong module graph as a Bazel workspace at %s", queryviewDir),
+			config:      config,
+			output:      config.QueryviewMarkerFile(),
+			specificArgs: append(baseArgs,
+				"--bazel_queryview_dir", queryviewDir,
+			),
+		},
+		{
+			name:        soongDocsTag,
+			description: fmt.Sprintf("generating Soong docs at %s", config.SoongDocsHtml()),
+			config:      config,
+			output:      config.SoongDocsHtml(),
+			specificArgs: append(baseArgs,
+				"--soong_docs", config.SoongDocsHtml(),
+			),
+		},
+	}
+
+	// ......
+
+	var invocations []bootstrap.PrimaryBuilderInvocation
+	for _, pbf := range pbfs {
+		if debuggedInvocations[pbf.name] {
+			pbf.debugPort = delvePort
+		}
+		pbi := pbf.primaryBuilderInvocation(config)
+		invocations = append(invocations, pbi)
+	}
+    
+    // 创建blueprint 执行的args
+
+	blueprintArgs := bootstrap.Args{
+		ModuleListFile: filepath.Join(config.FileListDir(), "Android.bp.list"),
+		OutFile:        shared.JoinPath(config.SoongOutDir(), "bootstrap.ninja"),
+		EmptyNinjaFile: false,
+	}
+
+	blueprintCtx := blueprint.NewContext()
+	blueprintCtx.AddIncludeTags(config.GetIncludeTags()...)
+	blueprintCtx.AddSourceRootDirs(config.GetSourceRootDirs()...)
+	blueprintCtx.SetIgnoreUnknownModuleTypes(true)
+	blueprintConfig := BlueprintConfig{
+		soongOutDir: config.SoongOutDir(),
+		toolDir:     config.HostToolDir(),
+		outDir:      config.OutDir(),
+		runGoTests:  !config.skipSoongTests,
+		// If we want to debug soong_build, we need to compile it for debugging
+		debugCompilation:          delvePort != "",
+		subninjas:                 bootstrapGlobFileList(config),
+		primaryBuilderInvocations: invocations,
+	}
+
+	// The glob ninja files are generated during the main build phase. However, the
+	// primary buildifer invocation depends on all of its glob files, even before
+	// it's been run. Generate a "empty" glob ninja file on the first run,
+	// so that the files can be there to satisfy the dependency.
+	for _, pb := range pbfs {
+		globPathName := getGlobPathNameFromPrimaryBuilderFactory(config, pb)
+		globNinjaFile := config.NamedGlobFile(globPathName)
+		if _, err := os.Stat(globNinjaFile); os.IsNotExist(err) {
+			err := bootstrap.WriteBuildGlobsNinjaFile(&bootstrap.GlobSingleton{
+				GlobLister: func() pathtools.MultipleGlobResults { return nil },
+				GlobFile:   globNinjaFile,
+				GlobDir:    bootstrap.GlobDirectory(config.SoongOutDir(), globPathName),
+				SrcDir:     ".",
+			}, blueprintConfig)
+			if err != nil {
+				ctx.Fatal(err)
+			}
+		} else if err != nil {
+			ctx.Fatal(err)
+		}
+	}
+
+	// since `bootstrap.ninja` is regenerated unconditionally, we ignore the deps, i.e. little
+	// reason to write a `bootstrap.ninja.d` file
+	_, err := bootstrap.RunBlueprint(blueprintArgs, bootstrap.DoEverything, blueprintCtx, blueprintConfig)
+	if err != nil {
+		ctx.Fatal(err)
+	}
+}
+```
 
 
 
 
-### runKatiBuild
+
+### environment check
 
 
 
-### runKatiPackage
+主要用于删除过时的文件列表。
+
+```go
+func() {
+		ctx.BeginTrace(metrics.RunSoong, "environment check")
+		defer ctx.EndTrace()
+
+		checkEnvironmentFile(ctx, soongBuildEnv, config.UsedEnvFile(soongBuildTag))
+
+		// Remove bazel files in the event that bazel is disabled for the build.
+		// These files may have been left over from a previous bazel-enabled build.
+		cleanBazelFiles(config)
+
+		if config.JsonModuleGraph() {
+			checkEnvironmentFile(ctx, soongBuildEnv, config.UsedEnvFile(jsonModuleGraphTag))
+		}
+
+		if config.Queryview() {
+			checkEnvironmentFile(ctx, soongBuildEnv, config.UsedEnvFile(queryviewTag))
+		}
+
+		if config.SoongDocs() {
+			checkEnvironmentFile(ctx, soongBuildEnv, config.UsedEnvFile(soongDocsTag))
+		}
+	}()
+```
 
 
 
 
 
-### createCombinedBuildNinjaFile
+### run bpglob
+
+
+
+执行microfactory为bpglob构建二进制
+
+```go
+runMicrofactory(ctx, config, "bpglob", "github.com/google/blueprint/bootstrap/bpglob",
+		map[string]string{"github.com/google/blueprint": "build/blueprint"})
+```
 
 
 
 
 
-### runNinja
+### soong bootstrap
+
+ 
+
+```go
+ninja := func(targets ...string) {
+		ctx.BeginTrace(metrics.RunSoong, "bootstrap")
+		defer ctx.EndTrace()
+
+		fifo := filepath.Join(config.OutDir(), ".ninja_fifo")
+		nr := status.NewNinjaReader(ctx, ctx.Status.StartTool(), fifo)
+		defer nr.Close()
+
+		ninjaArgs := []string{
+			"-d", "keepdepfile",
+			"-d", "stats",
+			"-o", "usesphonyoutputs=yes",
+			"-o", "preremoveoutputs=yes",
+			"-w", "dupbuild=err",
+			"-w", "outputdir=err",
+			"-w", "missingoutfile=err",
+			"-j", strconv.Itoa(config.Parallel()),
+			"--frontend_file", fifo,
+			"-f", filepath.Join(config.SoongOutDir(), "bootstrap.ninja"),
+		}
+
+		if extra, ok := config.Environment().Get("SOONG_UI_NINJA_ARGS"); ok {
+			ctx.Printf(`CAUTION: arguments in $SOONG_UI_NINJA_ARGS=%q, e.g. "-n", can make soong_build FAIL or INCORRECT`, extra)
+			ninjaArgs = append(ninjaArgs, strings.Fields(extra)...)
+		}
+
+		ninjaArgs = append(ninjaArgs, targets...)
+		cmd := Command(ctx, config, "soong bootstrap",
+			config.PrebuiltBuildTool("ninja"), ninjaArgs...)
+
+		var ninjaEnv Environment
+
+		// This is currently how the command line to invoke soong_build finds the
+		// root of the source tree and the output root
+		ninjaEnv.Set("TOP", os.Getenv("TOP"))
+
+		cmd.Environment = &ninjaEnv
+		cmd.Sandbox = soongSandbox
+		cmd.RunAndStreamOrFatal()
+	}
+	
+	// ......
+	
+	ninja(targets...)
+	
+```
 
 
+
+```
+prebuilts/build-tools/linux-x86/bin/ninja
+// 开启debug模式
+-d keepdepfile
+-d stats
+// 调整参数配置
+-o usesphonyoutputs=yes
+-o preremoveoutputs=yes
+// 调整warning 选项
+-w dupbuild=err
+-w outputdir=err
+-w missingoutfile=err
+// 设置并法度
+-j 34
+// 将序列化的输出结果写入到文件中
+--frontend_file out/.ninja_fifo
+// 声明输入文件
+-f out/soong/bootstrap.ninja 
+// 声明输出文件
+out/soong/build.aosp_oriole.ninja
+```
+
+关于各个参数的含义
+
+```
+usage: ninja [options] [targets...]
+
+if targets are unspecified, builds the 'default' target (see manual).
+
+options:
+  --version      print ninja version ("1.9.0.git")
+  -v, --verbose  show all command lines while building
+  --quiet        don't show progress status, just command output
+
+  -C DIR   change to DIR before doing anything else
+  -f FILE  specify input build file [default=build.ninja]
+
+  -j N     run N jobs in parallel (0 means infinity) [default=34 on this system]
+  -k N     keep going until N jobs fail (0 means infinity) [default=1]
+  -l N     do not start new jobs if the load average is greater than N
+  -n       dry run (don't run commands but act like they succeeded)
+
+  -d MODE  enable debugging (use '-d list' to list modes)
+  -t TOOL  run a subtool (use '-t list' to list subtools)
+    terminates toplevel options; further flags are passed to the tool
+  -o FLAG  adjust options (use '-o list' to list options)
+  -w FLAG  adjust warnings (use '-w list' to list warnings)
+
+  --frontend COMMAND    execute COMMAND and pass serialized build output to it
+  --frontend_file FILE  write serialized build output to FILE
+```
+
+
+
+
+
+## runKatiBuild
+
+
+
+## runKatiPackage
+
+
+
+
+
+## createCombinedBuildNinjaFile
+
+
+
+
+
+## runNinja
 
 
 
