@@ -258,11 +258,12 @@ SAVE_SIZE=8*8   // x4, x5, <padding>, x19, x20, x21, FP, LR saved.
     // X9 - destination address.
     // W10 - temporary
     
-    // 将sp
+    // 将sp + 8， 为ArtMethod* 提供存储空间。（也就是str xzr, [sp]）
     add x9, sp, #8                         // Destination address is bottom of stack + null.
 
     // Copy parameters into the stack. Use numeric label as this is a macro and Clang's assembler
     // does not have unique-id variables.
+    // 将所有参数拷贝到堆栈上。
     cbz w2, 2f
 1:
     sub w2, w2, #4      // Need 65536 bytes of range.
@@ -4944,7 +4945,13 @@ interpreter::ArtInterpreterToCompiledCodeBridge -> 解释器到jit/aot/jni
 
 
 
+## 参数传递
 
+
+
+1.最开始会在art_quick_invoke_static_stub中的INVOKE_STUB_CREATE_FRAME宏中会将参数保存到堆栈中
+
+2.之后的artQuickToInterpreterBridge方法中的shadow_frame_builder.VisitArguments会调用从#1中的堆栈中获取参数值
 
 # Refs
 
