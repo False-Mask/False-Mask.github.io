@@ -2098,7 +2098,7 @@ void SurfaceFlinger::dumpVisibleFrontEnd(std::string& result) {
 
 #### Composition List
 
-
+> 输出如下
 ```shell
 Composition list
 LayerStack=0
@@ -2124,10 +2124,170 @@ LayerStack=0
     input{(NOT_FOCUSABLE | NOT_TOUCHABLE | TRUSTED_OVERLAY | SLIPPERY) touchableRegion={0,2326,2326,0}}
 ```
 
+> 源码逻辑
+
+```c++
+out << "\nComposition list\n";
+        ui::LayerStack lastPrintedLayerStackHeader = ui::INVALID_LAYER_STACK;
+        mLayerSnapshotBuilder.forEachVisibleSnapshot(
+                [&](std::unique_ptr<frontend::LayerSnapshot>& snapshot) {
+                    if (snapshot->hasSomethingToDraw()) {
+                        if (lastPrintedLayerStackHeader != snapshot->outputFilter.layerStack) {
+                            lastPrintedLayerStackHeader = snapshot->outputFilter.layerStack;
+                            out << "LayerStack=" << lastPrintedLayerStackHeader.id << "\n";
+                        }
+                        out << "  " << *snapshot << "\n";
+                    }
+                });
+            
+```
+
+其中 mLayerSnapShotBuilder 创建逻辑如下
+``` c++
+mLayerSnapshotBuilder.update(args);
+```
+
+
+每一条item 的输出。
+```c++
+std::ostream& operator<<(std::ostream& out, const LayerSnapshot& obj) {
+    out << "Layer [" << obj.path.id;
+    if (!obj.path.mirrorRootIds.empty()) {
+        out << " mirrored from ";
+        for (auto rootId : obj.path.mirrorRootIds) {
+            out << rootId << ",";
+        }
+    }
+    out << "] " << obj.name << "\n    " << (obj.isVisible ? "visible" : "invisible")
+        << " reason=" << obj.getIsVisibleReason();
+
+    if (!obj.geomLayerBounds.isEmpty()) {
+        out << "\n    bounds={" << obj.transformedBounds.left << "," << obj.transformedBounds.top
+            << "," << obj.transformedBounds.bottom << "," << obj.transformedBounds.right << "}";
+    }
+
+    if (obj.geomLayerTransform.getType() != ui::Transform::IDENTITY) {
+        out << " toDisplayTransform={" << obj.geomLayerTransform << "}";
+    }
+
+    if (obj.hasInputInfo()) {
+        out << "\n    input{"
+            << "(" << obj.inputInfo.inputConfig.string() << ")";
+        if (obj.inputInfo.canOccludePresentation) out << " canOccludePresentation";
+        if (obj.touchCropId != UNASSIGNED_LAYER_ID) out << " touchCropId=" << obj.touchCropId;
+        if (obj.inputInfo.replaceTouchableRegionWithCrop) out << " replaceTouchableRegionWithCrop";
+        auto touchableRegion = obj.inputInfo.touchableRegion.getBounds();
+        out << " touchableRegion={" << touchableRegion.left << "," << touchableRegion.top << ","
+            << touchableRegion.bottom << "," << touchableRegion.right << "}"
+            << "}";
+    }
+    return out;
+}
+```
+
 #### Input List
 
 
+> 输出如下
+
+```c++
+Input list
+LayerStack=0
+  Layer [67] ScreenDecorOverlayBottom#67
+    visible reason= buffer=8087423418376 frame=87 color{< 0, 0, 0, 1 >}
+    bounds={0,2326,2400,1080} toDisplayTransform={ tx=0.0000 ty=2326.0000 }
+    input{(NOT_FOCUSABLE | NOT_TOUCHABLE | TRUSTED_OVERLAY | SLIPPERY) touchableRegion={0,2326,2326,0}}
+  Layer [66] ScreenDecorOverlay#66
+    visible reason= buffer=8087423418370 frame=87 color{< 0, 0, 0, 1 >}
+    bounds={0,0,128,1080}
+    input{(NOT_FOCUSABLE | NOT_TOUCHABLE | TRUSTED_OVERLAY | SLIPPERY) touchableRegion={492,0,128,610}}
+  Layer [79] [Gesture Monitor] swipe-up#79
+    invisible reason=nothing to draw
+    bounds={-10800,-24000,24000,10800}
+    input{(NOT_FOCUSABLE | TRUSTED_OVERLAY | SPY) replaceTouchableRegionWithCrop touchableRegion={-10799,-23999,24000,10800}}
+  Layer [81] NavigationBar0#81
+    visible reason= buffer=8087423418382 frame=30832 color{< 0, 0, 0, 1 >}
+    bounds={0,2274,2400,1080} toDisplayTransform={ tx=0.0000 ty=2274.0000 }
+    input{(NOT_FOCUSABLE | TRUSTED_OVERLAY | WATCH_OUTSIDE_TOUCH | SLIPPERY) touchableRegion={0,2274,2400,1080}}
+  Layer [85] StatusBar#85
+    visible reason= buffer=8087423418396 frame=6396 color{< 0, 0, 0, 1 >}
+    bounds={0,0,128,1080}
+    input{(NOT_FOCUSABLE | TRUSTED_OVERLAY) touchableRegion={0,0,128,1080}}
+  Layer [6395] com.google.android.dialer/com.google.android.dialer.extensions.GoogleDialtactsActivity#6395
+    visible reason= buffer=21006685044739 frame=14 color{< 0, 0, 0, 1 >}
+    bounds={0,0,2400,1080}
+    input{(0x0) canOccludePresentation touchCropId=6385 touchableRegion={0,0,2400,1080}}
+  Layer [6393] df705d4 ActivityRecordInputSink com.google.android.dialer/com.android.dialer.main.impl.MainActivity#6393
+    invisible reason=nothing to draw
+    bounds={-10800,-24000,24000,10800}
+    input{(NO_INPUT_CHANNEL | NOT_FOCUSABLE) replaceTouchableRegionWithCrop touchableRegion={-10799,-23999,24000,10800}}
+  Layer [6357] 97c0a45 ActivityRecordInputSink com.android.chrome/org.chromium.chrome.browser.ChromeTabbedActivity#6357
+    invisible reason=hidden by parent or layer flag
+    bounds={675.364,2114.09,2261.09,822.364} toDisplayTransform={ scale x=0.1361 y=0.1361  tx=675.3639 ty=2114.0933 }
+    input{(NO_INPUT_CHANNEL | NOT_VISIBLE | NOT_FOCUSABLE | NOT_TOUCHABLE) replaceTouchableRegionWithCrop touchableRegion={675,2114,2261,822}}
+  Layer [6235] 75c2726 ActivityRecordInputSink com.kwai.video/com.yxcorp.gifshow.tiny.TinyLaunchActivity#6235
+    invisible reason=hidden by parent or layer flag
+    bounds={0,302,2702,1080} toDisplayTransform={ tx=0.0000 ty=302.0000 }
+    input{(NO_INPUT_CHANNEL | NOT_VISIBLE | NOT_FOCUSABLE | NOT_TOUCHABLE) replaceTouchableRegionWithCrop touchableRegion={0,302,2702,1080}}
+  Layer [93] b2c2147 ActivityRecordInputSink com.android.launcher3/.uioverrides.QuickstepLauncher#93
+    invisible reason=hidden by parent or layer flag
+    bounds={0,0,2400,1080}
+    input{(NO_INPUT_CHANNEL | NOT_VISIBLE | NOT_FOCUSABLE | NOT_TOUCHABLE) replaceTouchableRegionWithCrop touchableRegion={0,0,2400,1080}}
+  Layer [70] com.android.systemui.wallpapers.ImageWallpaper#70
+    invisible reason=hidden by parent or layer flag
+    bounds={-10800,-24000,24000,10800} toDisplayTransform={ scale x=2.5782 y=2.5781  tx=-450.0000 ty=-120.0000 }
+    input{(NOT_VISIBLE | NOT_FOCUSABLE | NOT_TOUCHABLE | PREVENT_SPLITTING | IS_WALLPAPER) touchableRegion={-449,-119,-119,-449}}
+```
+
+> 源码逻辑
+
+```c++
+
+out << "\nInput list\n";
+        lastPrintedLayerStackHeader = ui::INVALID_LAYER_STACK;
+        mLayerSnapshotBuilder.forEachInputSnapshot([&](const frontend::LayerSnapshot& snapshot) {
+            if (lastPrintedLayerStackHeader != snapshot.outputFilter.layerStack) {
+                lastPrintedLayerStackHeader = snapshot.outputFilter.layerStack;
+                out << "LayerStack=" << lastPrintedLayerStackHeader.id << "\n";
+            }
+            out << "  " << snapshot << "\n";
+        });
+```
+
+
+通过源码不难发现Input list的输出其实和 Composition List 的输出是类似的，都是遍历mLayerSnapshotBuilder变量，然后调用forEachXXX 进行过滤 & 遍历输出。逻辑都是类似的。
+
 #### LayerHierarchy
+
+```c++
+out << "\nLayer Hierarchy\n"
+            << mLayerHierarchyBuilder.getHierarchy() << "\nOffscreen Hierarchy\n"
+            << mLayerHierarchyBuilder.getOffscreenHierarchy() << "\n\n";
+```
+
+
+##### Layer Hierarchy
+
+```c++
+// 1. 输出位置
+out << "\nLayer Hierarchy\n"
+            << mLayerHierarchyBuilder.getHierarchy() 
+// 2. 获取LayerHierarchy对象
+const LayerHierarchy& LayerHierarchyBuilder::getHierarchy() const {
+    return mRoot;
+}
+// 3. <<操作符重载进行 dump 输出。
+friend std::ostream& operator<<(std::ostream& os, const LayerHierarchy& obj) {
+        std::string prefix = " ";
+        obj.dump(os, prefix, LayerHierarchy::Variant::Attached, /*isLastChild=*/false,
+                 /*includeMirroredHierarchy*/ false);
+        return os;
+    }
+```
+
+
+
+##### OffsetHierarchy
 
 
 #### HWC layers
@@ -2135,9 +2295,6 @@ LayerStack=0
 
 
 # 记录
-
-
-
 
 
 https://juejin.cn/post/6856293249624375304#heading-7
