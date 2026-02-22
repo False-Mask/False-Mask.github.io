@@ -223,6 +223,8 @@ https://juejin.cn/post/7412848251844624424?searchId=202602070145220A82EE03A3A72D
 
 
 
+BLASTBufferQueue 即通过将 onFrameAvailable 进行拦截，将 SurfaceFlinger 的 Buffer 操作变为一次 Transaction 操作，以节省性能开销。
+
 
 
 # refs

@@ -541,11 +541,12 @@ public RenderNode updateDisplayListIfDirty() {
 
 > 精简了一下updateDisplayListIfDirty的逻辑。记录displayList的核心逻辑如下
 >
-> 很明显可以看出，所谓的录制操作其实就是使用了特定的canvas，在draw以前通过beginRecording获取一个特殊的canvas,
+> 很明显可以看出，所谓的录制操作其实就是使用了特定的canvas，在**draw以前**通过beginRecording获取一个特殊的canvas,
 >
-> 然后传入到draw方法内，执行完成后再调用endRecording.
+> 然后传入到draw方法内，**draw执行完成后**再调用endRecording，结束 Record。
 
 ```java
+// View.java
 public RenderNode updateDisplayListIfDirty() {
  
     // ......
@@ -572,9 +573,65 @@ public RenderNode updateDisplayListIfDirty() {
 }
 ```
 
+> 这里需要针对于 ViewGroup 做一下特殊的声明，ViewGroup 由于没有重写updateDisplayListIfDirty
+> 因此逻辑和 View.java 的逻辑是一致的。这里就存在一个问题——ViewGroup 是在 draw/dispatchDraw 以前进行的 Record 操作。
+> 那么是否会将 Child 的 drawXXX 指令也记录进去呢？
+
+先说答案不会，为什么呢?
+drawXXX 指令能被写入记录那么我们必须要使用 renderNode.beginRecording提供的 Canvas 对象才行。而在递归的过程中，ViewGroup-> Child View 的 updateDisplayListIfDirty 过程中，RecordingCanvas这个对象是发生变化了。
+
+简单捋了下 ViewGroup -> View updateDisplayList 的调用逻辑。不难发现childView.draw方法中会通过调用childView.updateDisplayListIfDirty对 childView的 child中的 Canvas 进行替换，与此同时为了和 parentView 建立关系会通过 drawRenderNode 将其关联到 parentView 中。
+ViewGroup.updateDisplayListIfDirty 
+	-> ViewGroup.dispatchDraw
+	-> ViewGroup.drawChild
+	-> childView.draw(3参Draw 方法)
+		-> childView.updateDisplayListIfDirty
+		-> canvas.drawRenderNode(renderNode) (canvas 为 parent 传入)
+
+如下childView.draw逻辑片段。
+```java
+// View.java
+boolean draw(@NonNull Canvas canvas, ViewGroup parent, long drawingTime) {
+
+		// ......
+
+        RenderNode renderNode = null;
+
+		// ......
+		// 如果启用硬件加速
+		if (drawingWithRenderNode) {
+            // Delay getting the display list until animation-driven alpha values are
+            // set up and possibly passed on to the view
+            // 此过程会更新 childView 的 canvas
+            renderNode = updateDisplayListIfDirty();
+            // 如果 RenderNode 必须要 DisplayList
+            if (!renderNode.hasDisplayList()) {
+                // Uncommon, but possible. If a view is removed from the hierarchy during the call
+                // to getDisplayList(), the display list will be marked invalid and we should not
+                // try to use it again.
+                renderNode = null;
+                drawingWithRenderNode = false;
+            }
+        }
+
+		// 如果没有启用 soft layer 缓存
+        if (!drawingWithDrawingCache) {
+	        // 启用硬件加速
+            if (drawingWithRenderNode) {
+                mPrivateFlags &= ~PFLAG_DIRTY_MASK;
+                // 将更新好的 Display 绘制添加到 parent 中。
+                ((RecordingCanvas) canvas).drawRenderNode(renderNode);
+            } 
+            // ......
+        }
+
+        return ...;
+    }
+```
 
 
-- RecordingCanvas实例获取
+
+#### RecordingCanvas实例获取
 
 > 接着分析下beginRecording是怎么创建canvas的
 >
@@ -635,7 +692,7 @@ public final class RecordingCanvas extends BaseRecordingCanvas {
 
 
 
-- RecordingCanvas JNI分析
+#### RecordingCanvas JNI分析
 
 ``` c++
 // android_graphics_DisplayListCanvas.cpp
@@ -737,7 +794,7 @@ virtual void resetRecording(int width, int height,
 
 
 
-- DisplayList记录
+#### DisplayList记录
 
 > 分析完上述的RecordingCanvas创建以及初始化操作，我们总算是可以继续分析最核心的displayList生成逻辑了。
 >
@@ -877,11 +934,13 @@ int register_android_graphics_Canvas(JNIEnv* env) {
 >
 > ​			DisplayListData::drawArc ->
 >
-> ​				DisplayListData::push<DrawArc> ->
->
+> ​				DisplayListData::push\<DrawArc\> \-\>
+> 
 > 通过下方方法我们不难分析出：
->
 > SkiaRecordingCanvas::drawArc核心逻辑其实就是创建了一个DrawArc存入了DisplayListData中。（并没有进行实际的合成操作）
+
+
+执行路径如下：SkiaDisplayCanvas -> RecordingCanvas(mCanvas) -> DisplayListData(fDL)
 
 ``` c++
 // android_graphics_Canvas.cpp
@@ -931,9 +990,7 @@ void DisplayListData::drawArc(const SkRect& oval, SkScalar startAngle, SkScalar 
     this->push<DrawArc>(0, oval, startAngle, sweepAngle, useCenter, paint);
 }
 
-
 ```
-
 
 
 > 补充一下push方法的实现
@@ -986,14 +1043,62 @@ void* DisplayListData::push(size_t pod, Args&&... args) {
 ![image-20250505215155468](https://typora-blog-picture.oss-cn-chengdu.aliyuncs.com/blog/image-20250505215155468.png)
 
 
+#### RecordingCanvas.endRecording
+
+```java
+// RenderNode.java
+public void endRecording() {
+        if (mCurrentRecordingCanvas == null) {
+            throw new IllegalStateException(
+                    "No recording in progress, forgot to call #beginRecording()?");
+        }
+        RecordingCanvas canvas = mCurrentRecordingCanvas;
+        mCurrentRecordingCanvas = null;
+        canvas.finishRecording(this);
+        canvas.recycle();
+}
+// RecordingCanvas.java
+void finishRecording(RenderNode node) {
+        nFinishRecording(mNativeCanvasWrapper, node.mNativeRenderNode);
+}
+```
 
 
+通过 JNI 进行
+```c++
+static void android_view_DisplayListCanvas_finishRecording(
+        CRITICAL_JNI_PARAMS_COMMA jlong canvasPtr, jlong renderNodePtr) {
+    Canvas* canvas = reinterpret_cast<Canvas*>(canvasPtr);
+    RenderNode* renderNode = reinterpret_cast<RenderNode*>(renderNodePtr);
+    canvas->finishRecording(renderNode);
+}
+```
 
+
+```c++
+std::unique_ptr<SkiaDisplayList> SkiaRecordingCanvas::finishRecording() {
+    // close any existing chunks if necessary
+    // 关闭 Z-轴 绘制模式（即 3D 渲染支持）
+    enableZ(false);
+    // 将 Skia 状态栈强制重置。防御性编程，确保 canvas.save/restore 是成对调用的，如果没有成对调用自动进行补充。
+    mRecorder.restoreToCount(1);
+    // 所有权转移
+    return std::move(mDisplayList);
+}
+```
+
+#### RecordingCanvas.recycle
+
+调用 sPool release 将 RecordingCanvas 存入缓存中。
+```c++
+void recycle() {
+        mNode = null;
+        sPool.release(this);
+}
+```
 
 
 ## syncAndDrawFrame
-
-
 
 > syncAndDrawFrame实现在native.
 
@@ -1003,7 +1108,6 @@ public int syncAndDrawFrame(@NonNull FrameInfo frameInfo) {
         return nSyncAndDrawFrame(mNativeProxy, frameInfo.frameInfo, frameInfo.frameInfo.length);
 }
 ```
-
 
 
 > JNI注册

@@ -1173,6 +1173,8 @@ void SurfaceFlinger::dumpAll(const DumpArgs& args, const std::string& compositio
 
 ## Dump library configuration
 
+> 此过程主要是用于用于 dump SurfaceFlinger、Display、Wide-Color、Sync、Scheduler 等配置信息。
+
 
 > 源代码如下：
 ``` c++
@@ -1367,6 +1369,11 @@ VsyncDispatch:
 
 ## Dump the visible layer list
 
+> 此过程主要用于 dump 可见的 layer 列表内容有些多主要有如下几个过程
+- compositionLayers - 用于 dump SurfaceFlinger 中的
+- display - dump 输出 DisplaySnapshot 列表
+- CompositionDisplay - dump 输出 compositionengine::Display 列表
+- CompositionEngine - 渲染 engine 信息
 
 
 > 源代码如下
@@ -2090,13 +2097,15 @@ void SurfaceFlinger::dumpVisibleFrontEnd(std::string& result) {
 
 | 日志类型             | 详细信息                                       |
 | ---------------- | ------------------------------------------ |
-| Composition List |                                            |
-| Input List       |                                            |
+| Composition List | 合成 Layer列表                                 |
+| Input List       | 输入事件列表                                     |
 | Layer Hierarchy  | 1.Layer Hierarchy<br>2.Offscreen Hierarchy |
-| HWC layers       |                                            |
-|                  |                                            |
+| HWC layers       | 硬件合成层列表                                    |
+
 
 #### Composition List
+
+输出frontend::LayerSnapshotBuilder的列表，而LayerSnapshotBuilder是系统服务（SurfaceFlinger）视角的**全量图层组织**，包含所有可见/不可见图层。
 
 > 输出如下
 ```shell
@@ -2129,13 +2138,17 @@ LayerStack=0
 ```c++
 out << "\nComposition list\n";
         ui::LayerStack lastPrintedLayerStackHeader = ui::INVALID_LAYER_STACK;
+        // 遍历mSnapshots只 visit 满足 snapshot->isVisible 的 snapshot
         mLayerSnapshotBuilder.forEachVisibleSnapshot(
                 [&](std::unique_ptr<frontend::LayerSnapshot>& snapshot) {
+		            // 如果 Layer 有内容需要渲染
                     if (snapshot->hasSomethingToDraw()) {
+		                // 如果 LayerStack 发生变化则进行打印。
                         if (lastPrintedLayerStackHeader != snapshot->outputFilter.layerStack) {
                             lastPrintedLayerStackHeader = snapshot->outputFilter.layerStack;
                             out << "LayerStack=" << lastPrintedLayerStackHeader.id << "\n";
                         }
+                        // 输出 SnapShot 对象
                         out << "  " << *snapshot << "\n";
                     }
                 });
@@ -2147,6 +2160,11 @@ out << "\nComposition list\n";
 mLayerSnapshotBuilder.update(args);
 ```
 
+调用堆栈如下：
+-> SurfaceFlinger::commit
+-> SurfaceFlinger::updateLayerSnapshots
+-> LayerSnapshotBuilder::update
+-> LayerSnapshotBuilder::updateSnapshots
 
 每一条item 的输出。
 ```c++
@@ -2187,6 +2205,7 @@ std::ostream& operator<<(std::ostream& out, const LayerSnapshot& obj) {
 
 #### Input List
 
+输出mLayerSnapshotBuilder的列表
 
 > 输出如下
 
@@ -2259,6 +2278,9 @@ out << "\nInput list\n";
 
 #### LayerHierarchy
 
+dump 输出 LayerHierarchyBuilder 的列表
+
+
 ```c++
 out << "\nLayer Hierarchy\n"
             << mLayerHierarchyBuilder.getHierarchy() << "\nOffscreen Hierarchy\n"
@@ -2279,20 +2301,597 @@ const LayerHierarchy& LayerHierarchyBuilder::getHierarchy() const {
 // 3. <<操作符重载进行 dump 输出。
 friend std::ostream& operator<<(std::ostream& os, const LayerHierarchy& obj) {
         std::string prefix = " ";
+        // 调用dump 函数输出日志到 os 对象中
         obj.dump(os, prefix, LayerHierarchy::Variant::Attached, /*isLastChild=*/false,
                  /*includeMirroredHierarchy*/ false);
         return os;
     }
+
+// 4. 调用 dump 操作将内容输出到ostream中
+void LayerHierarchy::dump(std::ostream& out, const std::string& prefix,
+                          LayerHierarchy::Variant variant, bool isLastChild,
+                          bool includeMirroredHierarchy) const {
+    if (!mLayer) {
+        out << " ROOT";
+    } else {
+        out << prefix + (isLastChild ? "└─ " : "├─ ");
+        if (variant == LayerHierarchy::Variant::Relative) {
+            out << "(Relative) ";
+        } else if (variant == LayerHierarchy::Variant::Mirror) {
+            if (!includeMirroredHierarchy) {
+                out << "(Mirroring) " << *mLayer << "\n" + prefix + "   └─ ...";
+                return;
+            }
+            out << "(Mirroring) ";
+        }
+        out << *mLayer;
+    }
+
+    for (size_t i = 0; i < mChildren.size(); i++) {
+        auto& [child, childVariant] = mChildren[i];
+        if (childVariant == LayerHierarchy::Variant::Detached) continue;
+        const bool lastChild = i == (mChildren.size() - 1);
+        std::string childPrefix = prefix;
+        if (mLayer) {
+            childPrefix += (isLastChild ? "   " : "│  ");
+        }
+        out << "\n";
+        child->dump(out, childPrefix, childVariant, lastChild, includeMirroredHierarchy);
+    }
+    return;
+}
 ```
 
-
+注：此处的Layer Hierarchy的更新/添加调用堆栈如下：
+SurfaceFlinger::commit
+-> SurfaceFlinger::updateLayerSnapshots
+-> LayerHierarchyBuilder::update
+-> LayerHierarchyBuilder::doUpdate
 
 ##### OffsetHierarchy
+
+```c++
+// 1. dump 输出Offscreen Hierarchy结构
+"\nOffscreen Hierarchy\n"
+            << mLayerHierarchyBuilder.getOffscreenHierarchy() << "\n\n"
+
+// 2. 获取 offscreenHierarchy
+const LayerHierarchy& LayerHierarchyBuilder::getOffscreenHierarchy() const {
+    return mOffscreenRoot;
+}
+
+// 3. 调用 dump 操作将内容输出到ostream中
+void LayerHierarchy::dump(std::ostream& out, const std::string& prefix,
+                          LayerHierarchy::Variant variant, bool isLastChild,
+                          bool includeMirroredHierarchy) const {
+
+	// 略......
+
+}
+```
 
 
 #### HWC layers
 
+输出mLayerSnapshotBuilder的列表内容
 
+
+
+> 输出如下
+
+```shell
+Display 4619827677550801152 (active) HWC layers:
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Layer name
+           Z |  Window Type |  Comp Type |  Transform |   Disp Frame (LTRB) |          Source Crop (LTRB) |     Frame Rate (Explicit) (Seamlessness) [Focused]
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
+ com.google.android.dialer/com.google[...]ensions.GoogleDialtactsActivity#6395
+           5 |            1 |     DEVICE |          0 |    0    0 1080 2400 |    0.0    0.0 1080.0 2400.0 |                                              [*]
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
+ StatusBar#85
+           6 |         2000 |     DEVICE |          0 |    0    0 1080  128 |    0.0    0.0 1080.0  128.0 |                                              [ ]
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
+ NavigationBar0#81
+           7 |         2019 |     DEVICE |          0 |    0 2274 1080 2400 |    0.0    0.0 1080.0  126.0 |                                              [ ]
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ScreenDecorOverlay#66
+           9 |         2024 |     DEVICE |          0 |    0    0 1080  128 |    0.0    0.0 1080.0  128.0 |                                              [ ]
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ScreenDecorOverlayBottom#67
+          10 |         2024 |     DEVICE |          0 |    0 2326 1080 2400 |    0.0    0.0 1080.0   74.0 |                                              [ ]
+---------------------------------------------------------------------------------------------------------------------------------------------------------------
+```
+
+> 源码逻辑如下
+
+dump HWC Layers
+```c++
+void SurfaceFlinger::dumpHwcLayersMinidump(std::string& result) const {
+    if (!mLayerLifecycleManagerEnabled) {
+        return dumpHwcLayersMinidumpLockedLegacy(result);
+    }
+    // 遍历所有display dump 所有输出。
+    for (const auto& [token, display] : FTL_FAKE_GUARD(mStateLock, mDisplays)) {
+        const auto displayId = HalDisplayId::tryCast(display->getId());
+        if (!displayId) {
+            continue;
+        }
+		
+        StringAppendF(&result, "Display %s (%s) HWC layers:\n", to_string(*displayId).c_str(),
+                      displayId == mActiveDisplayId ? "active" : "inactive");
+        // dump header
+        Layer::miniDumpHeader(result);
+		// 遍历所有mLayerSnapshotBuilder输出visible snapshot
+        const DisplayDevice& ref = *display;
+        mLayerSnapshotBuilder.forEachVisibleSnapshot([&](const frontend::LayerSnapshot& snapshot) {
+            if (!snapshot.hasSomethingToDraw() ||
+                ref.getLayerStack() != snapshot.outputFilter.layerStack) {
+                return;
+            }
+            auto it = mLegacyLayers.find(snapshot.sequence);
+            LLOG_ALWAYS_FATAL_WITH_TRACE_IF(it == mLegacyLayers.end(),
+                                            "Couldnt find layer object for %s",
+                                            snapshot.getDebugString().c_str());
+            // 第 snapShot 进行 miniDump 操作
+            it->second->miniDump(result, snapshot, ref);
+        });
+        result.append("\n");
+    }
+}
+```
+
+dump LayerSnapshot 的状态信息
+```c++
+void Layer::miniDump(std::string& result, const frontend::LayerSnapshot& snapshot,
+                     const DisplayDevice& display) const {
+    const auto outputLayer = findOutputLayerForDisplay(&display, snapshot.path);
+    if (!outputLayer) {
+        return;
+    }
+
+    StringAppendF(&result, " %s\n", snapshot.debugName.c_str());
+    StringAppendF(&result, "  %10zu | ", snapshot.globalZ);
+    StringAppendF(&result, "  %10d | ",
+                  snapshot.layerMetadata.getInt32(gui::METADATA_WINDOW_TYPE, 0));
+    StringAppendF(&result, "%10s | ", toString(getCompositionType(outputLayer)).c_str());
+    const auto& outputLayerState = outputLayer->getState();
+    StringAppendF(&result, "%10s | ", toString(outputLayerState.bufferTransform).c_str());
+    const Rect& frame = outputLayerState.displayFrame;
+    StringAppendF(&result, "%4d %4d %4d %4d | ", frame.left, frame.top, frame.right, frame.bottom);
+    const FloatRect& crop = outputLayerState.sourceCrop;
+    StringAppendF(&result, "%6.1f %6.1f %6.1f %6.1f | ", crop.left, crop.top, crop.right,
+                  crop.bottom);
+    const auto frameRate = snapshot.frameRate;
+    std::string frameRateStr;
+    if (frameRate.vote.rate.isValid()) {
+        StringAppendF(&frameRateStr, "%.2f", frameRate.vote.rate.getValue());
+    }
+    if (frameRate.vote.rate.isValid() || frameRate.vote.type != FrameRateCompatibility::Default) {
+        StringAppendF(&result, "%6s %15s %17s", frameRateStr.c_str(),
+                      ftl::enum_string(frameRate.vote.type).c_str(),
+                      ftl::enum_string(frameRate.vote.seamlessness).c_str());
+    } else if (frameRate.category != FrameRateCategory::Default) {
+        StringAppendF(&result, "%6s %15s %17s", frameRateStr.c_str(),
+                      (std::string("Cat::") + ftl::enum_string(frameRate.category)).c_str(),
+                      ftl::enum_string(frameRate.vote.seamlessness).c_str());
+    } else {
+        result.append(41, ' ');
+    }
+
+    const auto focused = isLayerFocusedBasedOnPriority(snapshot.frameRateSelectionPriority);
+    StringAppendF(&result, "    [%s]\n", focused ? "*" : " ");
+
+    result.append(kDumpTableRowLength, '-');
+    result.append("\n");
+}
+```
+
+
+### Display SnapShot
+
+dump 输出 display 的相关信息
+
+> 输出如下
+
+```c++
+Displays (1 entries)
+Display 4619827677550801152
+    connectionType=Internal
+    colorModes=
+        ColorMode::NATIVE
+        ColorMode::SRGB
+        ColorMode::DISPLAY_P3
+    deviceProductInfo={name="Common Panel", manufacturerPnpId=GGL, productId=0, manufactureWeek=1, manufactureYear=1990, relativeAddress=[]}
+    name="Common Panel"
+    powerMode=On
+    activeMode=60.00 Hz (60.00 Hz(60.00 Hz))
+    displayModes=
+        {id=0, hwcId=36, resolution=1080x2400, vsyncRate=60.00 Hz, dpi=409.43x411.89, group=0, vrrConfig=N/A}
+        {id=1, hwcId=37, resolution=1080x2400, vsyncRate=90.00 Hz, dpi=409.43x411.89, group=0, vrrConfig=N/A}
+    displayManagerPolicy={defaultModeId=1, allowGroupSwitching=false, primaryRanges={physical=[0.00 Hz, inf Hz], render=[0.00 Hz, 90.00 Hz]}, appRequestRanges={physical=[0.00 Hz, inf Hz], render=[0.00 Hz, 90.00 Hz]}}
+    frameRateOverrideConfig=Enabled
+    idleTimer=
+        interval=1500.000 ms
+        controller=Platform
+```
+
+> 源码逻辑
+```c++
+	// SurfaceFlinger dump 输出
+	colorizer.bold(result);
+    StringAppendF(&result, "Displays (%zu entries)\n", mDisplays.size());
+    colorizer.reset(result);
+    dumpDisplays(result);
+```
+
+
+```c++
+void SurfaceFlinger::dumpDisplays(std::string& result) const {
+    utils::Dumper dumper{result};
+	// dump 输出 physicalDisplays
+    for (const auto& [id, display] : mPhysicalDisplays) {
+        utils::Dumper::Section section(dumper, ftl::Concat("Display ", id.value).str());
+
+        display.snapshot().dump(dumper);
+
+        if (const auto device = getDisplayDeviceLocked(id)) {
+            device->dump(dumper);
+        }
+    }
+	// dump 输出虚拟设备
+    for (const auto& [token, display] : mDisplays) {
+        if (display->isVirtual()) {
+            const auto displayId = display->getId();
+            utils::Dumper::Section section(dumper,
+                                           ftl::Concat("Virtual Display ", displayId.value).str());
+            display->dump(dumper);
+        }
+    }
+}
+```
+
+
+### CompositionDisplay
+
+> 输出如下
+
+```c++
+Display 4619827677550801152 (physical, "Common Panel")
+   Composition Display State:
+   isEnabled=true isSecure=true usesDeviceComposition=true 
+   usesClientComposition=false flipClientTarget=false reusedClientComposition=false 
+   layerFilter={layerStack=0 toInternalDisplay=true }
+   transform (ROT_0) (IDENTITY)
+   layerStackSpace=ProjectionSpace{bounds=Rect(0, 0, 1080, 2400), content=Rect(0, 0, 1080, 2400), orientation=ROTATION_0} 
+   framebufferSpace=ProjectionSpace{bounds=Rect(0, 0, 1080, 2400), content=Rect(0, 0, 1080, 2400), orientation=ROTATION_0} 
+   orientedDisplaySpace=ProjectionSpace{bounds=Rect(0, 0, 1080, 2400), content=Rect(0, 0, 1080, 2400), orientation=ROTATION_0} 
+   displaySpace=ProjectionSpace{bounds=Rect(0, 0, 1080, 2400), content=Rect(0, 0, 1080, 2400), orientation=ROTATION_0} 
+   needsFiltering=false 
+   colorMode=SRGB (7) renderIntent=ENHANCE (1) dataspace=V0_SRGB (142671872) 
+   colorTransformMatrix=[[1.000,0.000,0.000,0.000][0.000,1.000,0.000,0.000][0.000,0.000,1.000,0.000][0.000,0.000,0.000,1.000]] 
+   displayBrightnessNits=-1.000000 sdrWhitePointNits=-1.000000 clientTargetBrightness=1.000000 displayBrightness=nullopt 
+   compositionStrategyPredictionState=DISABLED 
+   
+   treat170mAsSrgb=true 
+
+
+   Composition Display Color State:
+   HWC Support: wideColorGamut=true hdr10plus=true hdr10=true hlg=true dv=false metadata=7 
+   Hdr Luminance Info:desiredMinLuminance=0.000500 desiredMaxLuminance=800.000000 desiredMaxAverageLuminance=120.000000 
+
+   Composition RenderSurface State:
+   size=[1080 2400] ANativeWindow=0xb4000071870a99e0 (format 1) 
+   FramebufferSurface
+      mDataspace=Default (0)
+      mAbandoned=0
+      - BufferQueue mMaxAcquiredBufferCount=2 mMaxDequeuedBufferCount=1
+        mDequeueBufferCannotBlock=0 mAsyncMode=0
+        mQueueBufferCanDrop=0 mLegacyBufferDrop=1
+        default-size=[1080x2400] default-format=1         transform-hint=00 frame-counter=928835
+        mTransformHintInUse=00 mAutoPrerotation=0
+      FIFO(0):
+      (mConsumerName=FramebufferSurface, mConnectedApi=1, mConsumerUsageBits=6656, mId=1e900000000, producer=[489:/system/bin/surfaceflinger], consumer=[489:/system/bin/surfaceflinger])
+      Slots:
+       >[01:0xb40000708707a4d0] state=ACQUIRED 0xb4000070f706d170 frame=928835 [1080x2400:1088,  1]
+        [00:0xb4000070870792d0] state=FREE     0xb4000070f70714d0 frame=928833 [1080x2400:1088,  1]
+        [02:0xb40000708707a950] state=FREE     0xb4000070f7071210 frame=928834 [1080x2400:1088,  1]
+
+   5 Layers
+  - Output Layer 0xb4000071e71453f0(com.google.android.dialer/com.google.android.dialer.extensions.GoogleDialtactsActivity#6395)
+        Region visibleRegion (this=0xb4000071e7145408, count=1)
+    [  0,   0, 1080, 2400]
+        Region visibleNonTransparentRegion (this=0xb4000071e7145470, count=1)
+    [  0,   0, 1080, 2400]
+        Region coveredRegion (this=0xb4000071e71454d8, count=2)
+    [  0,   0, 1080, 128]
+    [  0, 2274, 1080, 2400]
+        Region output visibleRegion (this=0xb4000071e71455b0, count=1)
+    [  0,   0, 1080, 2400]
+        Region shadowRegion (this=0xb4000071e7145618, count=1)
+    [  0,   0,   0,   0]
+        Region outputSpaceBlockingRegionHint (this=0xb4000071e71456b0, count=1)
+    [  0,   0,   0,   0]
+      forceClientComposition=false clearClientTarget=false displayFrame=[0 0 1080 2400] sourceCrop=[0.000000 0.000000 1080.000000 2400.000000] bufferTransform=0 (0) dataspace=V0_SRGB (142671872) whitePointNits=-1.000000 dimmingRatio=1.000000 override buffer=0xb4000070e70b92f8 override acquire fence=0xb4000070b70a79b0 override display frame=[0 0 1080 2400] override dataspace=V0_SRGB (142671872) override display space=ProjectionSpace{bounds=Rect(0, 0, 1080, 2400), content=Rect(0, 0, 1080, 2400), orientation=ROTATION_0} override damage region=  Region  (this=0xb4000071e7145760, count=1)
+    [  0,   0,  -1,  -1]
+ override visible region=  Region  (this=0xb4000071e71457c8, count=1)
+    [  0,   0, 1080, 2400]
+ override peekThroughLayer=0x0 override disableBackgroundBlur=false 
+      hwc: layer=0x08b4000074590ab640 composition=DEVICE (2) 
+  - Output Layer 0xb4000071e7136c30(StatusBar#85)
+        Region visibleRegion (this=0xb4000071e7136c48, count=1)
+    [  0,   0, 1080, 128]
+        Region visibleNonTransparentRegion (this=0xb4000071e7136cb0, count=1)
+    [  0,   0, 1080, 128]
+        Region coveredRegion (this=0xb4000071e7136d18, count=1)
+    [  0,   0, 1080, 128]
+        Region output visibleRegion (this=0xb4000071e7136df0, count=1)
+    [  0,   0, 1080, 128]
+        Region shadowRegion (this=0xb4000071e7136e58, count=1)
+    [  0,   0,   0,   0]
+        Region outputSpaceBlockingRegionHint (this=0xb4000071e7136ef0, count=1)
+    [  0,   0,   0,   0]
+      forceClientComposition=false clearClientTarget=false displayFrame=[0 0 1080 128] sourceCrop=[0.000000 0.000000 1080.000000 128.000000] bufferTransform=0 (0) dataspace=V0_SRGB (142671872) whitePointNits=-1.000000 dimmingRatio=1.000000 override buffer=0xb4000070e70b92f8 override acquire fence=0xb4000070b70a79b0 override display frame=[0 0 1080 2400] override dataspace=V0_SRGB (142671872) override display space=ProjectionSpace{bounds=Rect(0, 0, 1080, 2400), content=Rect(0, 0, 1080, 2400), orientation=ROTATION_0} override damage region=  Region  (this=0xb4000071e7136fa0, count=1)
+    [  0,   0,  -1,  -1]
+ override visible region=  Region  (this=0xb4000071e7137008, count=1)
+    [  0,   0, 1080, 2400]
+ override peekThroughLayer=0x0 override disableBackgroundBlur=false 
+      hwc: layer=0x08b4000074590b1c70 composition=DEVICE (2) 
+  - Output Layer 0xb4000071e715eff0(NavigationBar0#81)
+        Region visibleRegion (this=0xb4000071e715f008, count=1)
+    [  0, 2274, 1080, 2400]
+        Region visibleNonTransparentRegion (this=0xb4000071e715f070, count=1)
+    [  0, 2274, 1080, 2400]
+        Region coveredRegion (this=0xb4000071e715f0d8, count=1)
+    [  0, 2326, 1080, 2400]
+        Region output visibleRegion (this=0xb4000071e715f1b0, count=1)
+    [  0, 2274, 1080, 2400]
+        Region shadowRegion (this=0xb4000071e715f218, count=1)
+    [  0,   0,   0,   0]
+        Region outputSpaceBlockingRegionHint (this=0xb4000071e715f2b0, count=1)
+    [  0,   0,   0,   0]
+      forceClientComposition=false clearClientTarget=false displayFrame=[0 2274 1080 2400] sourceCrop=[0.000000 0.000000 1080.000000 126.000000] bufferTransform=0 (0) dataspace=V0_SRGB (142671872) whitePointNits=-1.000000 dimmingRatio=1.000000 override buffer=0xb4000070e70b92f8 override acquire fence=0xb4000070b70a79b0 override display frame=[0 0 1080 2400] override dataspace=V0_SRGB (142671872) override display space=ProjectionSpace{bounds=Rect(0, 0, 1080, 2400), content=Rect(0, 0, 1080, 2400), orientation=ROTATION_0} override damage region=  Region  (this=0xb4000071e715f360, count=1)
+    [  0,   0,  -1,  -1]
+ override visible region=  Region  (this=0xb4000071e715f3c8, count=1)
+    [  0,   0, 1080, 2400]
+ override peekThroughLayer=0x0 override disableBackgroundBlur=false 
+      hwc: layer=0x08b4000074590afa60 composition=DEVICE (2) 
+  - Output Layer 0xb4000071e7131210(ScreenDecorOverlay#66)
+        Region visibleRegion (this=0xb4000071e7131228, count=1)
+    [  0,   0, 1080, 128]
+        Region visibleNonTransparentRegion (this=0xb4000071e7131290, count=1)
+    [  0,   0, 1080, 128]
+        Region coveredRegion (this=0xb4000071e71312f8, count=1)
+    [  0,   0,   0,   0]
+        Region output visibleRegion (this=0xb4000071e71313d0, count=1)
+    [  0,   0, 1080, 128]
+        Region shadowRegion (this=0xb4000071e7131438, count=1)
+    [  0,   0,   0,   0]
+        Region outputSpaceBlockingRegionHint (this=0xb4000071e71314d0, count=1)
+    [  0,   0,   0,   0]
+      forceClientComposition=false clearClientTarget=false displayFrame=[0 0 1080 128] sourceCrop=[0.000000 0.000000 1080.000000 128.000000] bufferTransform=0 (0) dataspace=V0_SRGB (142671872) whitePointNits=-1.000000 dimmingRatio=1.000000 override buffer=0xb4000070e70b92f8 override acquire fence=0xb4000070b70a79b0 override display frame=[0 0 1080 2400] override dataspace=V0_SRGB (142671872) override display space=ProjectionSpace{bounds=Rect(0, 0, 1080, 2400), content=Rect(0, 0, 1080, 2400), orientation=ROTATION_0} override damage region=  Region  (this=0xb4000071e7131580, count=1)
+    [  0,   0,  -1,  -1]
+ override visible region=  Region  (this=0xb4000071e71315e8, count=1)
+    [  0,   0, 1080, 2400]
+ override peekThroughLayer=0x0 override disableBackgroundBlur=false 
+      hwc: layer=0x08b4000074590ad850 composition=DEVICE (2) 
+  - Output Layer 0xb4000071e712d1b0(ScreenDecorOverlayBottom#67)
+        Region visibleRegion (this=0xb4000071e712d1c8, count=1)
+    [  0, 2326, 1080, 2400]
+        Region visibleNonTransparentRegion (this=0xb4000071e712d230, count=1)
+    [  0, 2326, 1080, 2400]
+        Region coveredRegion (this=0xb4000071e712d298, count=1)
+    [  0,   0,   0,   0]
+        Region output visibleRegion (this=0xb4000071e712d370, count=1)
+    [  0, 2326, 1080, 2400]
+        Region shadowRegion (this=0xb4000071e712d3d8, count=1)
+    [  0,   0,   0,   0]
+        Region outputSpaceBlockingRegionHint (this=0xb4000071e712d470, count=1)
+    [  0,   0,   0,   0]
+      forceClientComposition=false clearClientTarget=false displayFrame=[0 2326 1080 2400] sourceCrop=[0.000000 0.000000 1080.000000 74.000000] bufferTransform=0 (0) dataspace=V0_SRGB (142671872) whitePointNits=-1.000000 dimmingRatio=1.000000 override buffer=0xb4000070e70b92f8 override acquire fence=0xb4000070b70a79b0 override display frame=[0 0 1080 2400] override dataspace=V0_SRGB (142671872) override display space=ProjectionSpace{bounds=Rect(0, 0, 1080, 2400), content=Rect(0, 0, 1080, 2400), orientation=ROTATION_0} override damage region=  Region  (this=0xb4000071e712d520, count=1)
+    [  0,   0,  -1,  -1]
+ override visible region=  Region  (this=0xb4000071e712d588, count=1)
+    [  0,   0, 1080, 2400]
+ override peekThroughLayer=0x0 override disableBackgroundBlur=false 
+      hwc: layer=0x08b4000074590b6090 composition=DEVICE (2) 
+
+```
+
+> 源码逻辑
+```c++
+    dumpCompositionDisplays(result);
+    result.push_back('\n');
+```
+
+```c++
+void SurfaceFlinger::dumpCompositionDisplays(std::string& result) const {
+    for (const auto& [token, display] : mDisplays) {
+        display->getCompositionDisplay()->dump(result);
+        result += '\n';
+    }
+}
+```
+
+
+### CompositionEngine
+
+> 方法输出
+
+空
+
+> 源码逻辑
+
+```c++
+// 1. 最外层方法进行 dump 输出
+mCompositionEngine->dump(result);
+// 2. dump 方法实现逻辑
+void CompositionEngine::dump(std::string&) const {
+    // The base class has no state to dump, but derived classes might.
+}
+```
+
+## Dump SurfaceFlinger global state
+
+dump 输出SurfaceFlinger 的全局状态信息
+- RenderEngine信息
+- ClientCache信息
+- DebugEGLImageTracker信息
+
+## Dump HWComposer state
+
+dump 输出 HWComposer 的状态信息。
+
+```shell
+h/w composer state:
+  h/w composer enabled
+```
+
+## Dump gralloc state
+
+输出列表：
+- GraphicBufferAllocator buffers
+- Imported gralloc buffers
+
+```shell
+GraphicBufferAllocator buffers:
+        Handle |        Size |     W (Stride) x H | Layers |   Format |      Usage | Requestor
+0xb4000070f706d170 | 10200.00 KiB | 1080 (1088) x 2400 |      1 |        1 | 0x    1b00 | FramebufferSurface
+0xb4000070f706e770 | 10200.00 KiB | 1080 (1088) x 2400 |      1 |        1 | 0x     b00 | Planner
+0xb4000070f706f270 | 10200.00 KiB | 1080 (1088) x 2400 |      1 |        1 | 0x     b00 | Planner
+0xb4000070f706f690 | 10200.00 KiB | 1080 (1088) x 2400 |      1 |        1 | 0x     b00 | Planner
+0xb4000070f7071210 | 10200.00 KiB | 1080 (1088) x 2400 |      1 |        1 | 0x    1b00 | FramebufferSurface
+0xb4000070f70714d0 | 10200.00 KiB | 1080 (1088) x 2400 |      1 |        1 | 0x    1b00 | FramebufferSurface
+Total allocated by GraphicBufferAllocator (estimate): 61200.00 KB
+Imported gralloc buffers:
++ name:VRI[GoogleDialtactsActivity]#0(BLAST Consumer)0, id:2126008817486, size:10360.25KiB, w/h:1080x2400, usage: 0xb00, req fmt:1, fourcc/mod:875708993/576460752303423553, dataspace: 0x8810000, compressed: true
+	planes: R/G/B/A:	 w/h:1088x2400, stride:4352 bytes, size:10608896
++ name:VRI[GoogleDialtactsActivity]#0(BLAST Consumer)0, id:2126008817487, size:10360.25KiB, w/h:1080x2400, usage: 0xb00, req fmt:1, fourcc/mod:875708993/576460752303423553, dataspace: 0x8810000, compressed: true
+	planes: R/G/B/A:	 w/h:1088x2400, stride:4352 bytes, size:10608896
++ name:VRI[GoogleDialtactsActivity]#0(BLAST Consumer)0, id:2126008817488, size:10360.25KiB, w/h:1080x2400, usage: 0xb00, req fmt:1, fourcc/mod:875708993/576460752303423553, dataspace: 0x8810000, compressed: true
+	planes: R/G/B/A:	 w/h:1088x2400, stride:4352 bytes, size:10608896
++ name:VRI[GoogleDialtactsActivity]#0(BLAST Consumer)0, id:2126008817485, size:10360.25KiB, w/h:1080x2400, usage: 0xb00, req fmt:1, fourcc/mod:875708993/576460752303423553, dataspace: 0x8810000, compressed: true
+	planes: R/G/B/A:	 w/h:1088x2400, stride:4352 bytes, size:10608896
++ name:VRI[ScreenDecorOverlay]#0(BLAST Consumer)0, id:2126008811539, size:553.25KiB, w/h:1080x128, usage: 0xb00, req fmt:1, fourcc/mod:875708993/576460752303423553, dataspace: 0x8810000, compressed: true
+	planes: R/G/B/A:	 w/h:1088x128, stride:4352 bytes, size:566528
++ name:VRI[StatusBar]#5(BLAST Consumer)5, id:2126008811566, size:553.25KiB, w/h:1080x128, usage: 0xb00, req fmt:1, fourcc/mod:875708993/576460752303423553, dataspace: 0x8810000, compressed: true
+	planes: R/G/B/A:	 w/h:1088x128, stride:4352 bytes, size:566528
++ name:VRI[ScreenDecorOverlayBottom]#1(BLAST Consumer)1, id:2126008811545, size:346.25KiB, w/h:1080x74, usage: 0xb00, req fmt:1, fourcc/mod:875708993/576460752303423553, dataspace: 0x8810000, compressed: true
+	planes: R/G/B/A:	 w/h:1088x80, stride:4352 bytes, size:354560
++ name:VRI[StatusBar]#5(BLAST Consumer)5, id:2126008811564, size:553.25KiB, w/h:1080x128, usage: 0xb00, req fmt:1, fourcc/mod:875708993/576460752303423553, dataspace: 0x8810000, compressed: true
+	planes: R/G/B/A:	 w/h:1088x128, stride:4352 bytes, size:566528
++ name:VRI[NavigationBar0]#3(BLAST Consumer)3, id:2126008811551, size:553.25KiB, w/h:1080x126, usage: 0xb00, req fmt:1, fourcc/mod:875708993/576460752303423553, dataspace: 0x8810000, compressed: true
+	planes: R/G/B/A:	 w/h:1088x128, stride:4352 bytes, size:566528
++ name:FramebufferSurface, id:2126008811520, size:10360.25KiB, w/h:1080x2400, usage: 0x1b00, req fmt:1, fourcc/mod:875708993/576460752303423553, dataspace: 0x8810000, compressed: true
+	planes: R/G/B/A:	 w/h:1088x2400, stride:4352 bytes, size:10608896
++ name:VRI[StatusBar]#5(BLAST Consumer)5, id:2126008811565, size:553.25KiB, w/h:1080x128, usage: 0xb00, req fmt:1, fourcc/mod:875708993/576460752303423553, dataspace: 0x8810000, compressed: true
+	planes: R/G/B/A:	 w/h:1088x128, stride:4352 bytes, size:566528
++ name:FramebufferSurface, id:2126008811521, size:10360.25KiB, w/h:1080x2400, usage: 0x1b00, req fmt:1, fourcc/mod:875708993/576460752303423553, dataspace: 0x8810000, compressed: true
+	planes: R/G/B/A:	 w/h:1088x2400, stride:4352 bytes, size:10608896
++ name:VRI[NavigationBar0]#3(BLAST Consumer)3, id:2126008811552, size:553.25KiB, w/h:1080x126, usage: 0xb00, req fmt:1, fourcc/mod:875708993/576460752303423553, dataspace: 0x8810000, compressed: true
+	planes: R/G/B/A:	 w/h:1088x128, stride:4352 bytes, size:566528
++ name:FramebufferSurface, id:2126008811522, size:10360.25KiB, w/h:1080x2400, usage: 0x1b00, req fmt:1, fourcc/mod:875708993/576460752303423553, dataspace: 0x8810000, compressed: true
+	planes: R/G/B/A:	 w/h:1088x2400, stride:4352 bytes, size:10608896
++ name:VRI[StatusBar]#5(BLAST Consumer)5, id:2126008811563, size:553.25KiB, w/h:1080x128, usage: 0xb00, req fmt:1, fourcc/mod:875708993/576460752303423553, dataspace: 0x8810000, compressed: true
+	planes: R/G/B/A:	 w/h:1088x128, stride:4352 bytes, size:566528
++ name:VRI[NavigationBar0]#3(BLAST Consumer)3, id:2126008811550, size:553.25KiB, w/h:1080x126, usage: 0xb00, req fmt:1, fourcc/mod:875708993/576460752303423553, dataspace: 0x8810000, compressed: true
+	planes: R/G/B/A:	 w/h:1088x128, stride:4352 bytes, size:566528
++ name:VRI[ScreenDecorOverlayBottom]#1(BLAST Consumer)1, id:2126008811547, size:346.25KiB, w/h:1080x74, usage: 0xb00, req fmt:1, fourcc/mod:875708993/576460752303423553, dataspace: 0x8810000, compressed: true
+	planes: R/G/B/A:	 w/h:1088x80, stride:4352 bytes, size:354560
++ name:VRI[ScreenDecorOverlay]#0(BLAST Consumer)0, id:2126008811537, size:553.25KiB, w/h:1080x128, usage: 0xb00, req fmt:1, fourcc/mod:875708993/576460752303423553, dataspace: 0x8810000, compressed: true
+	planes: R/G/B/A:	 w/h:1088x128, stride:4352 bytes, size:566528
++ name:VRI[NavigationBar0]#3(BLAST Consumer)3, id:2126008811553, size:553.25KiB, w/h:1080x126, usage: 0xb00, req fmt:1, fourcc/mod:875708993/576460752303423553, dataspace: 0x8810000, compressed: true
+	planes: R/G/B/A:	 w/h:1088x128, stride:4352 bytes, size:566528
++ name:VRI[ScreenDecorOverlayBottom]#1(BLAST Consumer)1, id:2126008811544, size:346.25KiB, w/h:1080x74, usage: 0xb00, req fmt:1, fourcc/mod:875708993/576460752303423553, dataspace: 0x8810000, compressed: true
+	planes: R/G/B/A:	 w/h:1088x80, stride:4352 bytes, size:354560
++ name:Planner, id:2126008811525, size:10360.25KiB, w/h:1080x2400, usage: 0xb00, req fmt:1, fourcc/mod:875708993/576460752303423553, dataspace: 0x0, compressed: true
+	planes: R/G/B/A:	 w/h:1088x2400, stride:4352 bytes, size:10608896
++ name:VRI[ScreenDecorOverlay]#0(BLAST Consumer)0, id:2126008811538, size:553.25KiB, w/h:1080x128, usage: 0xb00, req fmt:1, fourcc/mod:875708993/576460752303423553, dataspace: 0x8810000, compressed: true
+	planes: R/G/B/A:	 w/h:1088x128, stride:4352 bytes, size:566528
++ name:VRI[ScreenDecorOverlay]#0(BLAST Consumer)0, id:2126008811536, size:553.25KiB, w/h:1080x128, usage: 0xb00, req fmt:1, fourcc/mod:875708993/576460752303423553, dataspace: 0x8810000, compressed: true
+	planes: R/G/B/A:	 w/h:1088x128, stride:4352 bytes, size:566528
++ name:Wallpaper#2(BLAST Consumer)2, id:2126008811548, size:3770.25KiB, w/h:922x1024, usage: 0xb00, req fmt:1, fourcc/mod:875708993/576460752303423553, dataspace: 0x8810000, compressed: true
+	planes: R/G/B/A:	 w/h:928x1024, stride:3712 bytes, size:3860736
++ name:VRI[ScreenDecorOverlayBottom]#1(BLAST Consumer)1, id:2126008811546, size:346.25KiB, w/h:1080x74, usage: 0xb00, req fmt:1, fourcc/mod:875708993/576460752303423553, dataspace: 0x8810000, compressed: true
+	planes: R/G/B/A:	 w/h:1088x80, stride:4352 bytes, size:354560
++ name:Planner, id:2126008811524, size:10360.25KiB, w/h:1080x2400, usage: 0xb00, req fmt:1, fourcc/mod:875708993/576460752303423553, dataspace: 0x0, compressed: true
+	planes: R/G/B/A:	 w/h:1088x2400, stride:4352 bytes, size:10608896
++ name:Planner, id:2126008811523, size:10360.25KiB, w/h:1080x2400, usage: 0xb00, req fmt:1, fourcc/mod:875708993/576460752303423553, dataspace: 0x0, compressed: true
+	planes: R/G/B/A:	 w/h:1088x2400, stride:4352 bytes, size:10608896
+Total imported by gralloc: 115396.75KiB
+```
+
+## Dump flag/property manager state
+
+主要包含如下：
+- FlagManager values
+- Window Infos
+
+> 输出列表：
+```shell
+FlagManager values: 
+use_adpf_cpu_hint: true
+use_skia_tracing: false
+refresh_rate_overlay_on_external_display: false
+connected_display: true
+enable_small_area_detection: true
+misc1: true
+vrr_config: true
+hotplug2: false
+hdcp_level_hal: false
+multithreaded_present: false
+add_sf_skipped_frames_to_trace: false
+use_known_refresh_rate_for_fps_consistency: false
+cache_when_source_crop_layer_only_moved: false
+enable_fro_dependent_features: true
+display_protected: true
+fp16_client_target: false
+game_default_frame_rate: false
+enable_layer_command_batching: true
+screenshot_fence_preservation: false
+vulkan_renderengine: false
+renderable_buffer_usage: false
+restore_blur_step: false
+dont_skip_on_early_ro: false
+protected_if_client: true
+TimeStats miniDump:
+Number of layers currently being tracked is 0
+Number of layers in the stats pool is 0
+
+Window Infos:
+  max send vsync id: -1
+  max send delay (ns): 0 ns
+  unsent messages: 0
+```
+
+
+> 源码如下：
+```c++
+	/*
+     * Dump flag/property manager state
+     */
+    FlagManager::getInstance().dump(result);
+
+    result.append(mTimeStats->miniDump());
+    result.append("\n");
+
+    result.append("Window Infos:\n");
+    auto windowInfosDebug = mWindowInfosListenerInvoker->getDebugInfo();
+    StringAppendF(&result, "  max send vsync id: %" PRId64 "\n",
+                  ftl::to_underlying(windowInfosDebug.maxSendDelayVsyncId));
+    StringAppendF(&result, "  max send delay (ns): %" PRId64 " ns\n",
+                  windowInfosDebug.maxSendDelayDuration);
+    StringAppendF(&result, "  unsent messages: %zu\n", windowInfosDebug.pendingMessageCount);
+    result.append("\n");
+}
+```
+
+
+# 其他
+
+| **维度**​ | **Composition List**​                                                   | **HWC Layers**​                         |
+| ------- | ----------------------------------------------------------------------- | --------------------------------------- |
+| **本质**​ | 描述**所有参与屏幕显示的图层**的基础属性（组成、可见性、输入、边界等），是“图层清单”。                          | 描述**由硬件合成器（HWC）直接管理**的图层状态，是“硬件合成层清单”。  |
+| **视角**​ | 系统服务（SurfaceFlinger）视角的**全量图层组织**，包含所有可见/不可见图层。                         | 硬件合成器（HWC）视角的**待合成图层子集**，仅包含HWC负责合成的图层。 |
+| **来源**​ | 来自 `dumpsys SurfaceFlinger`的“Composition list”段，反映SurfaceFlinger对图层的组织。 | 来自同一命令的“HWC layers”段，反映HWC实际处理的图层。      |
 
 # 记录
 
@@ -2363,3 +2962,46 @@ UI数据准备完成 -> 调用Layer::onFrameAvailable -> 回掉SF::signalLayerUp
 - postFrameBuffer
 
 将使用EGL合成的Layer以及需要HWC合成的Layer统一提交到HWC中进行合成
+
+
+
+# Refs
+
+[SurfaceFlinger一些类和概念FrontEnd，LayerSnapshot](https://mp.weixin.qq.com/s/IuNvd-a2VteQgh3BfnoM_Q)
+[SurfaceFlinger FrontEnd](https://cs.android.com/android/platform/superproject/+/android-latest-release:frameworks/native/services/surfaceflinger/FrontEnd/readme.md;l=1;drc=086ddb4e22efb9202f157839aea4976f0d1af1bd)
+1.Archetecture
+- 背景
+- SurfaceFlinger FrontEnd
+- Layers
+	- Layer Drawing Order
+	- Layer Lifecycle（图层生命周期）
+- Transactions
+- Architecture
+	- TransactionHandler：负责将App 通过SurfaceFlinger::setTransactionState提交的 Transaction 进行排队和过滤
+	- LayerLifecycleManager：负责将RequestedLayerState通过LayerLifecycleManager::addLayers添加到 LayerLifecycleManager中。
+	- LayerHierarchyBuilder：LayerHierarchyBuilder 通过LayerHierarchyBuilder::update消费 RequestedLayerStates 列表以生成 LayerHierarchy
+	- LayerSnapshotBuilder：LayerSnapshotBuilder方法通过LayerSnapshotBuilder::update消费 LayerHierarchy 以及 RequestedLayerStates 列表，以生成扁平的 z 排序的 LayerSnapshots 列表
+
+2.CompositionState
+
+
+https://juejin.cn/post/7484089977260556351#heading-6
+
+https://juejin.cn/post/7410657936714432547
+
+
+3.SurfaceFlinger 更新流程
+
+- app 测更新
+
+APP 通过 SurfaceControl/Transaction 进行原子操作 -> 通过 IP 调用Client -> Client 调用 SurfaceFlinger -> 保存到TransactionHandler中
+
+
+- SurfaceFlinger 轮询
+SurfaceFlinger onVsync
+-> 触发SurfaceFlinger.commit操作 
+-> updateLayerSnapshots
+-> mTransactionHandler.collectTransactions/mTransactionHandler.flushTransactions搜集 App 的图像数据 
+->  LayerLifecycleManager::applyTransactions将 Transactions 化为RequestedLayerState 
+-> 构建frontend::LayerSnapshotBuilder::Args 调用mLayerSnapshotBuilder.update刷新mLayerSnapshotBuilder列表。
+
